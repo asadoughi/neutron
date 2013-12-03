@@ -13,7 +13,6 @@ class OVSFirewallDriver(firewall.FirewallDriver):
 
     def __init__(self):
         self._filtered_ports = {}
-        self._defer_apply_on = False
         self.root_helper = cfg.CONF.AGENT.root_helper
         self.int_br = ovs_lib.OVSBridge(cfg.CONF.OVS.integration_bridge,
                                         self.root_helper)
@@ -55,9 +54,11 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         self._filtered_ports.pop(port['device'], None)
 
     def filter_defer_apply_on(self):
-        LOG.debug(_("~!~"))
-        self._defer_apply_on = True
+        self.int_br.defer_apply_on()
+        for br in self.phys_brs.value():
+            br.defer_apply_on()
 
     def filter_defer_apply_off(self):
-        LOG.debug(_("~!~"))
-        self._defer_apply_on = False
+        self.int_br.defer_apply_off()
+        for br in self.phys_brs.value():
+            br.defer_apply_off()
