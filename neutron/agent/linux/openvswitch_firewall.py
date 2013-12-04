@@ -2,10 +2,13 @@ from oslo.config import cfg
 
 from neutron.agent import firewall
 from neutron.agent.linux import ovs_lib
-from neutron.common import utils as q_utils
 from neutron.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
+
+SECURITY_GROUPS_DROP_ALL_PRIORITY = 5
+SECURITY_GROUPS_ARP_PRIORITY = 6
+SECURITY_GROUPS_RULES_PRIORITY = 7
 
 
 class OVSFirewallDriver(firewall.FirewallDriver):
@@ -16,15 +19,6 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         self.root_helper = cfg.CONF.AGENT.root_helper
         self.int_br = ovs_lib.OVSBridge(cfg.CONF.OVS.integration_bridge,
                                         self.root_helper)
-        try:
-            bridge_mappings = q_utils.parse_mappings(
-                cfg.CONF.OVS.bridge_mappings)
-        except ValueError as e:
-            raise ValueError(_("Parsing bridge_mappings failed: %s.") % e)
-
-        for physical_network, bridge in bridge_mappings.iteritems():
-            br = ovs_lib.OVSBridge(bridge, self.root_helper)
-            self.phys_brs[physical_network] = br
 
     @property
     def ports(self):
@@ -33,32 +27,77 @@ class OVSFirewallDriver(firewall.FirewallDriver):
     def apply_port_filter(self, port):
         pass
 
+    def _add_base_flows(self, port):
+        vif_port = self.int_br.get_vif_port_by_id(port['device'])
+        for fixed_ip in port['fixed_ips']:
+            self.int_br.add_flow(
+                priority=SECURITY_GROUPS_DROP_ALL_PRIORITY,
+                nw_src=fixed_ip,
+                actions="drop")
+            self.int_br.add_flow(
+                priority=SECURITY_GROUPS_DROP_ALL_PRIORITY,
+                nw_dst=fixed_ip,
+                actions="drop")
+
+            # TODO: refactor into more strict subset
+            self.int_br.add_flow(
+                priority=SECURITY_GROUPS_ARP_PRIORITY,
+                proto="arp",
+                nw_src=fixed_ip,
+                actions="normal")
+            self.int_br.add_flow(
+                priority=SECURITY_GROUPS_ARP_PRIORITY,
+                proto="arp",
+                nw_dst=fixed_ip,
+                actions="output:%s" % vif_port.ofport)
+
+    def _remove_flows(self, port):
+        for fixed_ip in port['fixed_ips']:
+            self.int_br.delete_flows(nw_src=fixed_ip)
+            self.int_br.delete_flows(nw_dst=fixed_ip)
+            self.int_br.delete_flows(proto="arp", nw_src=fixed_ip)
+            self.int_br.delete_flows(proto="arp", nw_dst=fixed_ip)
+
+    def _add_rule_flows(self, port):
+        pass
+
     def prepare_port_filter(self, port):
-        LOG.debug(_("Preparing device (%s) filter: %s"), port['device'], port)
+        LOG.debug(_("AMIR Preparing device (%s) filter: %s"), port['device'],
+                  port)
+        self._remove_flows(port)
+        self._add_base_flows(port)
+        self._add_rule_flows(port)
         self._filtered_ports[port['device']] = port
 
     def update_port_filter(self, port):
-        LOG.debug(_("Updating device (%s) filter: %s"), port['device'], port)
+        LOG.debug(_("AMIR Updating device (%s) filter: %s"), port['device'],
+                  port)
         if port['device'] not in self._filtered_ports:
             LOG.info(_('Attempted to update port filter which is not '
                        'filtered %s'), port['device'])
             return
+
+        old_port = self._filtered_ports[port['device']]
+        self._remove_flows(old_port)
+        self._add_base_flows(port)
+        self._add_rule_flows(port)
         self._filtered_ports[port['device']] = port
 
     def remove_port_filter(self, port):
-        LOG.debug(_("Removing device (%s) filter: %s"), port['device'], port)
+        LOG.debug(_("AMIR Removing device (%s) filter: %s"), port['device'],
+                  port)
         if not self._filtered_ports.get(port['device']):
             LOG.info(_('Attempted to remove port filter which is not '
                        'filtered %r'), port)
             return
-        self._filtered_ports.pop(port['device'], None)
+        self._remove_flows(port)
 
     def filter_defer_apply_on(self):
-        self.int_br.defer_apply_on()
-        for br in self.phys_brs.value():
-            br.defer_apply_on()
+        LOG.debug(_("AMIR defer_apply_on"))
+        #self.int_br.defer_apply_on()
+        pass
 
     def filter_defer_apply_off(self):
-        self.int_br.defer_apply_off()
-        for br in self.phys_brs.value():
-            br.defer_apply_off()
+        LOG.debug(_("AMIR defer_apply_off"))
+        #self.int_br.defer_apply_off()
+        pass
