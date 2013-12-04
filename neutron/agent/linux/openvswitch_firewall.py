@@ -27,8 +27,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
     def apply_port_filter(self, port):
         pass
 
-    def _add_base_flows(self, port):
-        vif_port = self.int_br.get_vif_port_by_id(port['device'])
+    def _add_base_flows(self, port, vif_port):
         for fixed_ip in port['fixed_ips']:
             self.int_br.add_flow(
                 priority=SECURITY_GROUPS_DROP_ALL_PRIORITY,
@@ -58,15 +57,27 @@ class OVSFirewallDriver(firewall.FirewallDriver):
             self.int_br.delete_flows(proto="arp", nw_src=fixed_ip)
             self.int_br.delete_flows(proto="arp", nw_dst=fixed_ip)
 
-    def _add_rule_flows(self, port):
-        pass
+    def _add_rule_flows(self, port, vif_port):
+        for fixed_ip in port['fixed_ips']:
+            # TODO !@# garbage test
+            self.int_br.add_flow(
+                priority=SECURITY_GROUPS_RULES_PRIORITY,
+                proto="icmp",
+                nw_src=fixed_ip,
+                actions="normal")
+            self.int_br.add_flow(
+                priority=SECURITY_GROUPS_RULES_PRIORITY,
+                proto="icmp",
+                nw_dst=fixed_ip,
+                actions="output:%s" % vif_port.ofport)
 
     def prepare_port_filter(self, port):
         LOG.debug(_("AMIR Preparing device (%s) filter: %s"), port['device'],
                   port)
         self._remove_flows(port)
-        self._add_base_flows(port)
-        self._add_rule_flows(port)
+        vif_port = self.int_br.get_vif_port_by_id(port['device'])
+        self._add_base_flows(port, vif_port)
+        self._add_rule_flows(port, vif_port)
         self._filtered_ports[port['device']] = port
 
     def update_port_filter(self, port):
@@ -79,8 +90,9 @@ class OVSFirewallDriver(firewall.FirewallDriver):
 
         old_port = self._filtered_ports[port['device']]
         self._remove_flows(old_port)
-        self._add_base_flows(port)
-        self._add_rule_flows(port)
+        vif_port = self.int_br.get_vif_port_by_id(port['device'])
+        self._add_base_flows(port, vif_port)
+        self._add_rule_flows(port, vif_port)
         self._filtered_ports[port['device']] = port
 
     def remove_port_filter(self, port):
@@ -91,6 +103,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
                        'filtered %r'), port)
             return
         self._remove_flows(port)
+        self._filtered_ports.pop(port['device'])
 
     def filter_defer_apply_on(self):
         LOG.debug(_("AMIR defer_apply_on"))
