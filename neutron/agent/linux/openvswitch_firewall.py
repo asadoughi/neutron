@@ -35,24 +35,37 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         for fixed_ip in port['fixed_ips']:
             self.int_br.add_flow(
                 priority=SECURITY_GROUPS_DROP_ALL_PRIORITY,
-                nw_src=fixed_ip,
+                # nw_src=fixed_ip,
                 actions="drop")
             self.int_br.add_flow(
                 priority=SECURITY_GROUPS_DROP_ALL_PRIORITY,
-                nw_dst=fixed_ip,
+                # nw_dst=fixed_ip,
                 actions="drop")
 
-            # TODO: refactor into more strict subset
+            # Broadcast ARP
             self.int_br.add_flow(
                 priority=SECURITY_GROUPS_ARP_PRIORITY,
+                dl_src=vif_port.vif_mac,
+                dl_dst="ff:ff:ff:ff:ff:ff",
                 proto="arp",
                 nw_src=fixed_ip,
                 actions="normal")
+            # in_port=vif_port.ofport, ovs-neutron-agent del-flows with this
+            # nw_proto=1, not processed
+            # arp_sha=vif_port.vif_mac, not processed
+            # arp_tha="00:00:00:00:00:00", not processed
+
+            # Broadcast ARP Response
             self.int_br.add_flow(
                 priority=SECURITY_GROUPS_ARP_PRIORITY,
+                dl_dst=vif_port.vif_mac,
                 proto="arp",
                 nw_dst=fixed_ip,
                 actions="output:%s" % vif_port.ofport)
+            # in_port(19),eth(src=00:50:56:c0:00:01, get ofport/mac of int-phy-br
+            # nw_proto=2,
+            # arp_sha=00:50:56:c0:00:01,
+            # arp_tha=vif_port.vif_mac,
 
     def _remove_flows(self, port):
         for fixed_ip in port['fixed_ips']:
@@ -76,8 +89,10 @@ class OVSFirewallDriver(firewall.FirewallDriver):
 
             flow = dict(priority=SECURITY_GROUPS_RULES_PRIORITY)
             if direction == EGRESS_DIRECTION:
+                flow["dl_src"] = vif_port.vif_mac
                 flow["actions"] = "normal"
             elif direction == INGRESS_DIRECTION:
+                flow["dl_dst"] = vif_port.vif_mac
                 flow["actions"] = "output:%s" % vif_port.ofport
 
             if protocol:
