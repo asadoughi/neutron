@@ -181,11 +181,13 @@ class OVSBridge(BaseOVS):
         dl_dst = 'dl_dst' in kwargs and ",dl_dst=%s" % kwargs['dl_dst'] or ''
         nw_src = 'nw_src' in kwargs and ",nw_src=%s" % kwargs['nw_src'] or ''
         nw_dst = 'nw_dst' in kwargs and ",nw_dst=%s" % kwargs['nw_dst'] or ''
+        tp_src = 'tp_src' in kwargs and ",tp_src=%s" % kwargs['tp_src'] or ''
+        tp_dst = 'tp_dst' in kwargs and ",tp_dst=%s" % kwargs['tp_dst'] or ''
         tun_id = 'tun_id' in kwargs and ",tun_id=%s" % kwargs['tun_id'] or ''
         proto = 'proto' in kwargs and ",%s" % kwargs['proto'] or ''
         ip = ('nw_src' in kwargs or 'nw_dst' in kwargs) and ',ip' or ''
         match = (table + in_port + dl_type + dl_vlan + dl_src + dl_dst +
-                (proto or ip) + nw_src + nw_dst + tun_id)
+                (proto or ip) + nw_src + nw_dst + tp_src + tp_dst + tun_id)
         if match:
             match = match[1:]  # strip leading comma
             flow_expr_arr.append(match)

@@ -2,6 +2,7 @@ from oslo.config import cfg
 
 from neutron.agent import firewall
 from neutron.agent.linux import ovs_lib
+from neutron.common import constants
 from neutron.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
@@ -9,6 +10,9 @@ LOG = logging.getLogger(__name__)
 SECURITY_GROUPS_DROP_ALL_PRIORITY = 5
 SECURITY_GROUPS_ARP_PRIORITY = 6
 SECURITY_GROUPS_RULES_PRIORITY = 7
+
+INGRESS_DIRECTION = 'ingress'
+EGRESS_DIRECTION = 'egress'
 
 
 class OVSFirewallDriver(firewall.FirewallDriver):
@@ -57,19 +61,58 @@ class OVSFirewallDriver(firewall.FirewallDriver):
             self.int_br.delete_flows(proto="arp", nw_src=fixed_ip)
             self.int_br.delete_flows(proto="arp", nw_dst=fixed_ip)
 
-    def _add_rule_flows(self, port, vif_port):
-        for fixed_ip in port['fixed_ips']:
-            # TODO !@# garbage test
-            self.int_br.add_flow(
-                priority=SECURITY_GROUPS_RULES_PRIORITY,
-                proto="icmp",
-                nw_src=fixed_ip,
-                actions="normal")
-            self.int_br.add_flow(
-                priority=SECURITY_GROUPS_RULES_PRIORITY,
-                proto="icmp",
-                nw_dst=fixed_ip,
-                actions="output:%s" % vif_port.ofport)
+    def _add_rules_flows(self, port, vif_port):
+        rules = port['security_group_rules']
+        for rule in rules:
+            ethertype = rule['ethertype']
+            direction = rule['direction']
+            protocol = rule.get('protocol')
+            port_range_min = rule.get('port_range_min')
+            port_range_max = rule.get('port_range_max')
+            source_ip_prefix = rule.get('source_ip_prefix')
+            source_port_range_min = rule.get('source_port_range_min')
+            source_port_range_max = rule.get('source_port_range_max')
+            dest_ip_prefix = rule.get('dest_ip_prefix')
+
+            flow = dict(priority=SECURITY_GROUPS_RULES_PRIORITY)
+            if direction == EGRESS_DIRECTION:
+                flow["actions"] = "normal"
+            elif direction == INGRESS_DIRECTION:
+                flow["actions"] = "output:%s" % vif_port.ofport
+
+            if protocol:
+                if protocol == "icmp" and ethertype == constants.IPv6:
+                    flow["proto"] = "icmpv6"
+                else:
+                    flow["proto"] = protocol
+
+            if port_range_min and port_range_max:
+                if port_range_min == port_range_max:
+                    flow["tp_dst"] = port_range_min
+                else:
+                    # TODO !@# handle wide range
+                    pass
+
+            if source_port_range_min and source_port_range_max:
+                if source_port_range_min == source_port_range_max:
+                    flow["tp_src"] = source_port_range_min
+                else:
+                    # TODO !@# handle wide range
+                    pass
+
+            if dest_ip_prefix:
+                flow["nw_dst"] = dest_ip_prefix
+
+            if source_ip_prefix:
+                flow["nw_src"] = source_ip_prefix
+
+            for fixed_ip in port['fixed_ips']:
+                if direction == EGRESS_DIRECTION:
+                    flow["nw_src"] = fixed_ip
+                elif direction == INGRESS_DIRECTION:
+                    flow["nw_dst"] = fixed_ip
+
+                self.int_br.add_flow(**flow)
 
     def prepare_port_filter(self, port):
         LOG.debug(_("AMIR Preparing device (%s) filter: %s"), port['device'],
@@ -77,7 +120,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         self._remove_flows(port)
         vif_port = self.int_br.get_vif_port_by_id(port['device'])
         self._add_base_flows(port, vif_port)
-        self._add_rule_flows(port, vif_port)
+        self._add_rules_flows(port, vif_port)
         self._filtered_ports[port['device']] = port
 
     def update_port_filter(self, port):
@@ -92,7 +135,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         self._remove_flows(old_port)
         vif_port = self.int_br.get_vif_port_by_id(port['device'])
         self._add_base_flows(port, vif_port)
-        self._add_rule_flows(port, vif_port)
+        self._add_rules_flows(port, vif_port)
         self._filtered_ports[port['device']] = port
 
     def remove_port_filter(self, port):
