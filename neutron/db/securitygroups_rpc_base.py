@@ -308,6 +308,11 @@ class SecurityGroupServerRpcCallbackMixin(object):
                         direction_ip_prefix = DIRECTION_IP_PREFIX[direction]
                         rule_dict[direction_ip_prefix] = rule_in_db[key]
                         continue
+                    elif ((key == 'port_range_min' or key == 'port_range_max')
+                          and (direction == 'ingress-src' or
+                               direction == 'egress-src')):
+                        rule_dict['source_' + key] = rule_in_db[key]
+                        continue
                     rule_dict[key] = rule_in_db[key]
             port['security_group_rules'].append(rule_dict)
         self._apply_provider_rule(context, ports)
