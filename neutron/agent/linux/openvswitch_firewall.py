@@ -25,6 +25,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
         self.root_helper = cfg.CONF.AGENT.root_helper
         self.int_br = ovs_lib.OVSBridge(cfg.CONF.OVS.integration_bridge,
                                         self.root_helper)
+        self._deferred = False
 
     @property
     def ports(self):
@@ -171,10 +172,12 @@ class OVSFirewallDriver(firewall.FirewallDriver):
 
     def filter_defer_apply_on(self):
         LOG.debug(_("AMIR defer_apply_on"))
-        #self.int_br.defer_apply_on()
-        pass
+        if not self._deferred:
+            self.int_br.defer_apply_on()
+            self._deferred = True
 
     def filter_defer_apply_off(self):
         LOG.debug(_("AMIR defer_apply_off"))
-        #self.int_br.defer_apply_off()
-        pass
+        if self._deferred:
+            self.int_br.defer_apply_off()
+            self._deferred = False

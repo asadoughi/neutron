@@ -249,14 +249,16 @@ class OVSBridge(BaseOVS):
 
     def defer_apply_off(self):
         LOG.debug(_('defer_apply_off'))
-        for action, flows in self.deferred_flows.items():
+        for action in ('del', 'mod', 'add'):
+            flows = self.deferred_flows.get(action)
             if flows:
                 LOG.debug(_('Applying following deferred flows '
                             'to bridge %s'), self.br_name)
                 for line in flows.splitlines():
                     LOG.debug(_('%(action)s: %(flow)s'),
                               {'action': action, 'flow': line})
-                self.run_ofctl('%s-flows' % action, ['-'], flows)
+                    plural = 'flow' if action == 'add' else 'flows'
+                    self.run_ofctl('%s-%s' % (action, plural), [line])
         self.defer_apply_flows = False
         self.deferred_flows = {'add': '', 'mod': '', 'del': ''}
 
