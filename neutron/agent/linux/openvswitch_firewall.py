@@ -126,6 +126,7 @@ class OVSFirewallDriver(firewall.FirewallDriver):
                 elif direction == INGRESS_DIRECTION:
                     flow["nw_dst"] = fixed_ip
 
+                LOG.debug(_("AMIR rule %s flow %s"), rule, flow)
                 self.int_br.add_flow(**flow)
 
     def prepare_port_filter(self, port):

@@ -32,7 +32,9 @@ IP_MASK = {q_const.IPv4: 32,
 
 
 DIRECTION_IP_PREFIX = {'ingress': 'source_ip_prefix',
-                       'egress': 'dest_ip_prefix'}
+                       'egress': 'dest_ip_prefix',
+                       'ingress-src': 'source_ip_prefix',
+                       'egress-src': 'dest_ip_prefix'}
 
 
 class SecurityGroupServerRpcMixin(sg_db.SecurityGroupDbMixin):
