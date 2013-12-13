@@ -82,6 +82,8 @@ class SecurityGroupRule(model_base.BASEV2, models_v2.HasId,
     protocol = sa.Column(sa.String(40))
     port_range_min = sa.Column(sa.Integer)
     port_range_max = sa.Column(sa.Integer)
+    source_port_range_min = sa.Column(sa.Integer)
+    source_port_range_max = sa.Column(sa.Integer)
     remote_ip_prefix = sa.Column(sa.String(255))
     security_group = orm.relationship(
         SecurityGroup,
@@ -279,8 +281,10 @@ class SecurityGroupDbMixin(ext_sg.SecurityGroupPluginBase):
                     remote_group_id=rule.get('remote_group_id'),
                     ethertype=rule['ethertype'],
                     protocol=rule['protocol'],
-                    port_range_min=rule['port_range_min'],
-                    port_range_max=rule['port_range_max'],
+                    port_range_min=rule.get('port_range_min'),
+                    port_range_max=rule.get('port_range_max'),
+                    source_port_range_min=rule.get('source_port_range_min'),
+                    source_port_range_max=rule.get('source_port_range_max'),
                     remote_ip_prefix=rule.get('remote_ip_prefix'))
                 context.session.add(db)
             ret.append(self._make_security_group_rule_dict(db))
@@ -296,26 +300,25 @@ class SecurityGroupDbMixin(ext_sg.SecurityGroupPluginBase):
             return
         return IP_PROTOCOL_MAP.get(protocol, protocol)
 
-    def _validate_port_range(self, rule):
+    def _validate_port_range(self, rule, key_min, key_max):
         """Check that port_range is valid."""
-        if (rule['port_range_min'] is None and
-            rule['port_range_max'] is None):
+        if not attr.is_attr_set(rule.get(key_min)) and not attr.is_attr_set(rule.get(key_max)):
             return
         if not rule['protocol']:
             raise ext_sg.SecurityGroupProtocolRequiredWithPorts()
         ip_proto = self._get_ip_proto_number(rule['protocol'])
         if ip_proto in [constants.PROTO_NUM_TCP, constants.PROTO_NUM_UDP]:
-            if (rule['port_range_min'] is not None and
-                rule['port_range_min'] <= rule['port_range_max']):
+            if (rule.get(key_min) is not None and
+                rule.get(key_min) <= rule.get(key_min)):
                 pass
             else:
-                raise ext_sg.SecurityGroupInvalidPortRange()
+                raise ext_sg.SecurityGroupInvalidPortRange(key_min=key_min, key_max=key_max)
         elif ip_proto == constants.PROTO_NUM_ICMP:
-            for attr, field in [('port_range_min', 'type'),
-                                ('port_range_max', 'code')]:
-                if rule[attr] > 255:
+            for attribute, field in [(key_min, 'type'),
+                                     (key_max, 'code')]:
+                if rule[attribute] > 255:
                     raise ext_sg.SecurityGroupInvalidIcmpValue(
-                        field=field, attr=attr, value=rule[attr])
+                        field=field, attr=attribute, value=rule[attribute])
 
     def _validate_security_group_rules(self, context, security_group_rule):
         """Check that rules being installed.
@@ -330,7 +333,8 @@ class SecurityGroupDbMixin(ext_sg.SecurityGroupPluginBase):
             rule = rules.get('security_group_rule')
             new_rules.add(rule['security_group_id'])
 
-            self._validate_port_range(rule)
+            self._validate_port_range(rule, "port_range_min", "port_range_max")
+            self._validate_port_range(rule, "port_range_min", "port_range_max")
 
             if rule['remote_ip_prefix'] and rule['remote_group_id']:
                 raise ext_sg.SecurityGroupRemoteGroupAndRemoteIpPrefix()
@@ -364,6 +368,8 @@ class SecurityGroupDbMixin(ext_sg.SecurityGroupPluginBase):
                'protocol': security_group_rule['protocol'],
                'port_range_min': security_group_rule['port_range_min'],
                'port_range_max': security_group_rule['port_range_max'],
+               'source_port_range_min': security_group_rule['source_port_range_min'],
+               'source_port_range_max': security_group_rule['source_port_range_max'],
                'remote_ip_prefix': security_group_rule['remote_ip_prefix'],
                'remote_group_id': security_group_rule['remote_group_id']}
 
@@ -376,6 +382,7 @@ class SecurityGroupDbMixin(ext_sg.SecurityGroupPluginBase):
                'direction': [sgr['direction']]}
 
         include_if_present = ['protocol', 'port_range_max', 'port_range_min',
+                              'source_port_range_max', 'source_port_range_min',
                               'ethertype', 'remote_ip_prefix',
                               'remote_group_id']
         for key in include_if_present:
