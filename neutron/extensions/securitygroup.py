@@ -31,8 +31,8 @@ from neutron import quota
 
 # Security group Exceptions
 class SecurityGroupInvalidPortRange(qexception.InvalidInput):
-    message = _("For TCP/UDP protocols, port_range_min must be "
-                "<= port_range_max")
+    message = _("For TCP/UDP protocols, %(key_min)s must be "
+                "<= %(key_max)s")
 
 
 class SecurityGroupInvalidPortValue(qexception.InvalidInput):
@@ -182,6 +182,7 @@ sg_supported_protocols = [None, const.PROTO_NAME_TCP,
 sg_supported_ethertypes = ['IPv4', 'IPv6']
 
 # Attribute Map
+SECURITY_GROUP_RULES = 'security_group_rules'
 RESOURCE_ATTRIBUTE_MAP = {
     'security_groups': {
         'id': {'allow_post': False, 'allow_put': False,
@@ -196,10 +197,10 @@ RESOURCE_ATTRIBUTE_MAP = {
         'tenant_id': {'allow_post': True, 'allow_put': False,
                       'required_by_policy': True,
                       'is_visible': True},
-        'security_group_rules': {'allow_post': False, 'allow_put': False,
-                                 'is_visible': True},
+        SECURITY_GROUP_RULES: {'allow_post': False, 'allow_put': False,
+                               'is_visible': True},
     },
-    'security_group_rules': {
+    SECURITY_GROUP_RULES: {
         'id': {'allow_post': False, 'allow_put': False,
                'validate': {'type:uuid': None},
                'is_visible': True,

@@ -31,7 +31,7 @@ from neutron.db import external_net_db
 from neutron.db import extradhcpopt_db
 from neutron.db import models_v2
 from neutron.db import quota_db  # noqa
-from neutron.db import securitygroups_rpc_base as sg_db_rpc
+from neutron.db import securitygroups_source_port_db as sg_sp_db
 from neutron.extensions import allowedaddresspairs as addr_pair
 from neutron.extensions import extra_dhcp_opt as edo_ext
 from neutron.extensions import multiprovidernet as mpnet
@@ -64,7 +64,7 @@ TYPE_MULTI_SEGMENT = 'multi-segment'
 
 class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                 external_net_db.External_net_db_mixin,
-                sg_db_rpc.SecurityGroupServerRpcMixin,
+                sg_sp_db.SecGrpSrcPortServerRpcMixin,
                 agentschedulers_db.DhcpAgentSchedulerDbMixin,
                 addr_pair_db.AllowedAddressPairsMixin,
                 extradhcpopt_db.ExtraDhcpOptMixin):
@@ -90,7 +90,8 @@ class Ml2Plugin(db_base_plugin_v2.NeutronDbPluginV2,
                                     "quotas", "security-group", "agent",
                                     "dhcp_agent_scheduler",
                                     "multi-provider", "allowed-address-pairs",
-                                    "extra_dhcp_opt"]
+                                    "extra_dhcp_opt",
+                                    "security-group-source-port"]
 
     @property
     def supported_extension_aliases(self):
