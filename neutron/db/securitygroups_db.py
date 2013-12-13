@@ -76,7 +76,7 @@ class SecurityGroupRule(model_base.BASEV2, models_v2.HasId,
                                               ondelete="CASCADE"),
                                 nullable=True)
 
-    direction = sa.Column(sa.Enum('ingress', 'egress', 'ingress-src', 'egress-src',
+    direction = sa.Column(sa.Enum('ingress', 'egress',
                                   name='securitygrouprules_direction'))
     ethertype = sa.Column(sa.String(40))
     protocol = sa.Column(sa.String(40))

@@ -13,8 +13,6 @@ SECURITY_GROUPS_RULES_PRIORITY = 7
 
 INGRESS_DIRECTION = 'ingress'
 EGRESS_DIRECTION = 'egress'
-INGRESS_SRC_DIRECTION = 'ingress-src'
-EGRESS_SRC_DIRECTION = 'egress-src'
 
 
 class OVSFirewallDriver(firewall.FirewallDriver):
@@ -90,12 +88,10 @@ class OVSFirewallDriver(firewall.FirewallDriver):
             dest_ip_prefix = rule.get('dest_ip_prefix')
 
             flow = dict(priority=SECURITY_GROUPS_RULES_PRIORITY)
-            if (direction == EGRESS_DIRECTION or
-                direction == EGRESS_SRC_DIRECTION):
+            if (direction == EGRESS_DIRECTION):
                 flow["dl_src"] = port["mac_address"]
                 flow["actions"] = "normal"
-            elif (direction == INGRESS_DIRECTION or
-                  direction == INGRESS_SRC_DIRECTION):
+            elif (direction == INGRESS_DIRECTION):
                 flow["dl_dst"] = port["mac_address"]
                 flow["actions"] = "output:%s" % vif_port.ofport
 
@@ -126,11 +122,9 @@ class OVSFirewallDriver(firewall.FirewallDriver):
                 flow["nw_src"] = source_ip_prefix
 
             for fixed_ip in port['fixed_ips']:
-                if (direction == EGRESS_DIRECTION or
-                    direction == EGRESS_SRC_DIRECTION):
+                if (direction == EGRESS_DIRECTION):
                     flow["nw_src"] = fixed_ip
-                elif (direction == INGRESS_DIRECTION or
-                      direction == INGRESS_SRC_DIRECTION):
+                elif (direction == INGRESS_DIRECTION):
                     flow["nw_dst"] = fixed_ip
 
                 LOG.debug(_("AMIR rule %s flow %s"), rule, flow)

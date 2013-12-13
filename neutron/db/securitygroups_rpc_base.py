@@ -32,9 +32,7 @@ IP_MASK = {q_const.IPv4: 32,
 
 
 DIRECTION_IP_PREFIX = {'ingress': 'source_ip_prefix',
-                       'egress': 'dest_ip_prefix',
-                       'ingress-src': 'source_ip_prefix',
-                       'egress-src': 'dest_ip_prefix'}
+                       'egress': 'dest_ip_prefix'}
 
 
 class SecurityGroupServerRpcMixin(sg_db.SecurityGroupDbMixin):
@@ -307,11 +305,6 @@ class SecurityGroupServerRpcCallbackMixin(object):
                     if key == 'remote_ip_prefix':
                         direction_ip_prefix = DIRECTION_IP_PREFIX[direction]
                         rule_dict[direction_ip_prefix] = rule_in_db[key]
-                        continue
-                    elif ((key == 'port_range_min' or key == 'port_range_max')
-                          and (direction == 'ingress-src' or
-                               direction == 'egress-src')):
-                        rule_dict['source_' + key] = rule_in_db[key]
                         continue
                     rule_dict[key] = rule_in_db[key]
             port['security_group_rules'].append(rule_dict)
