@@ -73,29 +73,37 @@ class SecurityGroupsTestCase(test_db_plugin.NeutronDbPluginV2TestCase):
 
     def _build_security_group_rule(self, security_group_id, direction, proto,
                                    port_range_min=None, port_range_max=None,
+                                   source_port_range_min=None,
+                                   source_port_range_max=None,
                                    remote_ip_prefix=None, remote_group_id=None,
                                    tenant_id='test_tenant',
                                    ethertype=const.IPv4):
+        body = {'security_group_id': security_group_id,
+                'direction': direction,
+                'protocol': proto,
+                'ethertype': ethertype,
+                'tenant_id': tenant_id,
+                'ethertype': ethertype}
 
-        data = {'security_group_rule': {'security_group_id': security_group_id,
-                                        'direction': direction,
-                                        'protocol': proto,
-                                        'ethertype': ethertype,
-                                        'tenant_id': tenant_id,
-                                        'ethertype': ethertype}}
         if port_range_min:
-            data['security_group_rule']['port_range_min'] = port_range_min
+            body['port_range_min'] = port_range_min
 
         if port_range_max:
-            data['security_group_rule']['port_range_max'] = port_range_max
+            body['port_range_max'] = port_range_max
+
+        if source_port_range_min:
+            body['source_port_range_min'] = source_port_range_min
+
+        if source_port_range_max:
+            body['source_port_range_max'] = source_port_range_max
 
         if remote_ip_prefix:
-            data['security_group_rule']['remote_ip_prefix'] = remote_ip_prefix
+            body['remote_ip_prefix'] = remote_ip_prefix
 
         if remote_group_id:
-            data['security_group_rule']['remote_group_id'] = remote_group_id
+            body['remote_group_id'] = remote_group_id
 
-        return data
+        return {'security_group_rule': body}
 
     def _create_security_group_rule(self, fmt, rules, **kwargs):
 
@@ -138,6 +146,8 @@ class SecurityGroupsTestCase(test_db_plugin.NeutronDbPluginV2TestCase):
                                                     'd1db38eb087',
                             direction='ingress', protocol=const.PROTO_NAME_TCP,
                             port_range_min='22', port_range_max='22',
+                            source_port_range_min=None,
+                            source_port_range_max=None,
                             remote_ip_prefix=None, remote_group_id=None,
                             fmt=None, no_delete=False, ethertype=const.IPv4):
         if not fmt:
@@ -146,6 +156,8 @@ class SecurityGroupsTestCase(test_db_plugin.NeutronDbPluginV2TestCase):
                                                direction,
                                                protocol, port_range_min,
                                                port_range_max,
+                                               source_port_range_min,
+                                               source_port_range_max,
                                                remote_ip_prefix,
                                                remote_group_id,
                                                ethertype=ethertype)
@@ -164,9 +176,11 @@ class SecurityGroupsTestCase(test_db_plugin.NeutronDbPluginV2TestCase):
             query_params='security_group_id=%s' % security_group_id)
 
         for r in res['security_group_rules']:
-            if (r['direction'] == 'egress' and not r['port_range_max'] and
-                    not r['port_range_min'] and not r['protocol']
-                    and not r['remote_ip_prefix']):
+            if (r['direction'] == 'egress' and
+                    not r['port_range_max'] and not r['port_range_min'] and
+                    not r['source_port_range_min'] and
+                    not r['source_port_range_max'] and
+                    not r['protocol'] and not r['remote_ip_prefix']):
                 self._delete('security-group-rules', r['id'])
 
     def _assert_sg_rule_has_kvs(self, security_group_rule, expected_kvs):
@@ -268,7 +282,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                     'remote_ip_prefix': None,
                     'protocol': None,
                     'port_range_max': None,
-                    'port_range_min': None}
+                    'port_range_min': None,
+                    'source_port_range_min': None,
+                    'source_port_range_max': None}
         self._assert_sg_rule_has_kvs(v4_rule, expected)
 
         v6_rules = [r for r in sg_rules if r['ethertype'] == const.IPv6]
@@ -280,7 +296,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                     'remote_ip_prefix': None,
                     'protocol': None,
                     'port_range_max': None,
-                    'port_range_min': None}
+                    'port_range_min': None,
+                    'source_port_range_min': None,
+                    'source_port_range_max': None}
         self._assert_sg_rule_has_kvs(v6_rule, expected)
 
     def test_update_security_group(self):
@@ -445,7 +463,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             ethertype = 'ipV4'
             with self.security_group_rule(security_group_id, direction,
                                           protocol, port_range_min,
-                                          port_range_max,
+                                          port_range_max, None, None,
                                           remote_ip_prefix,
                                           ethertype=ethertype) as rule:
 
@@ -467,15 +485,21 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             protocol = const.PROTO_NAME_TCP
             port_range_min = 22
             port_range_max = 22
+            source_port_range_min = 44
+            source_port_range_max = 44
             keys = [('remote_ip_prefix', remote_ip_prefix),
                     ('security_group_id', security_group_id),
                     ('direction', direction),
                     ('protocol', protocol),
                     ('port_range_min', port_range_min),
-                    ('port_range_max', port_range_max)]
+                    ('port_range_max', port_range_max),
+                    ('source_port_range_min', source_port_range_min),
+                    ('source_port_range_max', source_port_range_max)]
             with self.security_group_rule(security_group_id, direction,
                                           protocol, port_range_min,
                                           port_range_max,
+                                          source_port_range_min,
+                                          source_port_range_max,
                                           remote_ip_prefix):
 
                 group = self.deserialize(
@@ -543,7 +567,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                         'remote_ip_prefix': None,
                         'protocol': None,
                         'port_range_max': None,
-                        'port_range_min': None}
+                        'port_range_min': None,
+                        'source_port_range_min': None,
+                        'source_port_range_max': None}
             self._assert_sg_rule_has_kvs(v4_egress, expected)
 
             # Verify default rule for v6 egress
@@ -560,7 +586,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                         'remote_ip_prefix': None,
                         'protocol': None,
                         'port_range_max': None,
-                        'port_range_min': None}
+                        'port_range_min': None,
+                        'source_port_range_min': None,
+                        'source_port_range_max': None}
             self._assert_sg_rule_has_kvs(v6_egress, expected)
 
             # Verify default rule for v4 ingress
@@ -577,7 +605,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                         'remote_ip_prefix': None,
                         'protocol': None,
                         'port_range_max': None,
-                        'port_range_min': None}
+                        'port_range_min': None,
+                        'source_port_range_min': None,
+                        'source_port_range_max': None}
             self._assert_sg_rule_has_kvs(v4_ingress, expected)
 
             # Verify default rule for v6 ingress
@@ -594,7 +624,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                         'remote_ip_prefix': None,
                         'protocol': None,
                         'port_range_max': None,
-                        'port_range_min': None}
+                        'port_range_min': None,
+                        'source_port_range_min': None,
+                        'source_port_range_max': None}
             self._assert_sg_rule_has_kvs(v6_ingress, expected)
 
     def test_create_security_group_rule_remote_ip_prefix(self):
@@ -612,10 +644,12 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                     ('direction', direction),
                     ('protocol', protocol),
                     ('port_range_min', port_range_min),
-                    ('port_range_max', port_range_max)]
+                    ('port_range_max', port_range_max),
+                    ('source_port_range_min', None),
+                    ('source_port_range_max', None)]
             with self.security_group_rule(security_group_id, direction,
                                           protocol, port_range_min,
-                                          port_range_max,
+                                          port_range_max, None, None,
                                           remote_ip_prefix) as rule:
                 for k, v, in keys:
                     self.assertEqual(rule['security_group_rule'][k], v)
@@ -636,7 +670,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                         ('direction', direction),
                         ('protocol', protocol),
                         ('port_range_min', port_range_min),
-                        ('port_range_max', port_range_max)]
+                        ('port_range_max', port_range_max),
+                        ('source_port_range_min', None),
+                        ('source_port_range_max', None)]
                 with self.security_group_rule(security_group_id, direction,
                                               protocol, port_range_min,
                                               port_range_max,
@@ -658,15 +694,21 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             # not called for ICMP.
             port_range_min = 8
             port_range_max = 5
+            source_port_range_min = 8
+            source_port_range_max = 5
             keys = [('remote_ip_prefix', remote_ip_prefix),
                     ('security_group_id', security_group_id),
                     ('direction', direction),
                     ('protocol', protocol),
                     ('port_range_min', port_range_min),
-                    ('port_range_max', port_range_max)]
+                    ('port_range_max', port_range_max),
+                    ('source_port_range_min', source_port_range_min),
+                    ('source_port_range_max', source_port_range_max)]
             with self.security_group_rule(security_group_id, direction,
                                           protocol, port_range_min,
                                           port_range_max,
+                                          source_port_range_min,
+                                          source_port_range_max,
                                           remote_ip_prefix) as rule:
                 for k, v, in keys:
                     self.assertEqual(rule['security_group_rule'][k], v)
@@ -683,15 +725,21 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             port_range_min = 8
             # ICMP code
             port_range_max = None
+            source_port_range_min = 8
+            source_port_range_max = None
             keys = [('remote_ip_prefix', remote_ip_prefix),
                     ('security_group_id', security_group_id),
                     ('direction', direction),
                     ('protocol', protocol),
                     ('port_range_min', port_range_min),
-                    ('port_range_max', port_range_max)]
+                    ('port_range_max', port_range_max),
+                    ('source_port_range_min', source_port_range_min),
+                    ('source_port_range_max', source_port_range_max)]
             with self.security_group_rule(security_group_id, direction,
                                           protocol, port_range_min,
                                           port_range_max,
+                                          source_port_range_min,
+                                          source_port_range_max,
                                           remote_ip_prefix) as rule:
                 for k, v, in keys:
                     self.assertEqual(rule['security_group_rule'][k], v)
@@ -706,7 +754,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         remote_group_id = "9cd70774-cc67-4a87-9b39-7d1db38eb087"
         rule = self._build_security_group_rule(security_group_id, direction,
                                                protocol, port_range_min,
-                                               port_range_max,
+                                               port_range_max, None, None,
                                                remote_ip_prefix,
                                                remote_group_id)
         res = self._create_security_group_rule(self.fmt, rule)
@@ -722,7 +770,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         port_range_max = 22
         rule = self._build_security_group_rule(security_group_id, direction,
                                                protocol, port_range_min,
-                                               port_range_max,
+                                               port_range_max, None, None,
                                                remote_ip_prefix)
         res = self._create_security_group_rule(self.fmt, rule)
         self.deserialize(self.fmt, res)
@@ -797,7 +845,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             port_range_max = 22
         rule = self._build_security_group_rule(security_group_id, direction,
                                                protocol, port_range_min,
-                                               port_range_max,
+                                               port_range_max, None, None,
                                                remote_group_id=remote_group_id)
         res = self._create_security_group_rule(self.fmt, rule)
         self.deserialize(self.fmt, res)
@@ -834,6 +882,24 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                     self.assertEqual(res.status_int,
                                      webob.exc.HTTPBadRequest.code)
 
+    def test_create_security_group_rule_min_source_port_greater_max(self):
+        name = 'webservers'
+        description = 'my webservers'
+        with self.security_group(name, description) as sg:
+            security_group_id = sg['security_group']['id']
+            with self.security_group_rule(security_group_id):
+                for protocol in [const.PROTO_NAME_TCP, const.PROTO_NAME_UDP,
+                                 const.PROTO_NUM_TCP, const.PROTO_NUM_UDP]:
+                    rule = self._build_security_group_rule(
+                        sg['security_group']['id'],
+                        'ingress', protocol, source_port_range_min='50',
+                        source_port_range_max='22')
+                    self._create_security_group_rule(self.fmt, rule)
+                    res = self._create_security_group_rule(self.fmt, rule)
+                    self.deserialize(self.fmt, res)
+                    self.assertEqual(res.status_int,
+                                     webob.exc.HTTPBadRequest.code)
+
     def test_create_security_group_rule_ports_but_no_protocol(self):
         name = 'webservers'
         description = 'my webservers'
@@ -842,6 +908,20 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             with self.security_group_rule(security_group_id):
                 rule = self._build_security_group_rule(
                     sg['security_group']['id'], 'ingress', None, '22', '22')
+                self._create_security_group_rule(self.fmt, rule)
+                res = self._create_security_group_rule(self.fmt, rule)
+                self.deserialize(self.fmt, res)
+                self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
+
+    def test_create_security_group_rule_source_ports_but_no_protocol(self):
+        name = 'webservers'
+        description = 'my webservers'
+        with self.security_group(name, description) as sg:
+            security_group_id = sg['security_group']['id']
+            with self.security_group_rule(security_group_id):
+                rule = self._build_security_group_rule(
+                    sg['security_group']['id'], 'ingress', None,
+                    source_port_range_min='22', source_port_range_max='22')
                 self._create_security_group_rule(self.fmt, rule)
                 res = self._create_security_group_rule(self.fmt, rule)
                 self.deserialize(self.fmt, res)
@@ -861,6 +941,21 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                 self.deserialize(self.fmt, res)
                 self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
 
+    def test_create_security_group_rule_source_port_range_min_only(self):
+        name = 'webservers'
+        description = 'my webservers'
+        with self.security_group(name, description) as sg:
+            security_group_id = sg['security_group']['id']
+            with self.security_group_rule(security_group_id):
+                rule = self._build_security_group_rule(
+                    sg['security_group']['id'], 'ingress',
+                    const.PROTO_NAME_TCP, source_port_range_min='22',
+                    source_port_range_max=None)
+                self._create_security_group_rule(self.fmt, rule)
+                res = self._create_security_group_rule(self.fmt, rule)
+                self.deserialize(self.fmt, res)
+                self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
+
     def test_create_security_group_rule_port_range_max_only(self):
         name = 'webservers'
         description = 'my webservers'
@@ -875,7 +970,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                 self.deserialize(self.fmt, res)
                 self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
 
-    def test_create_security_group_rule_icmp_type_too_big(self):
+    def test_create_security_group_rule_source_port_range_max_only(self):
         name = 'webservers'
         description = 'my webservers'
         with self.security_group(name, description) as sg:
@@ -883,7 +978,22 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             with self.security_group_rule(security_group_id):
                 rule = self._build_security_group_rule(
                     sg['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_ICMP, '256', None)
+                    const.PROTO_NAME_TCP, None, '22')
+                self._create_security_group_rule(self.fmt, rule)
+                res = self._create_security_group_rule(self.fmt, rule)
+                self.deserialize(self.fmt, res)
+                self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
+
+    def test_create_security_group_rule_source_icmp_type_too_big(self):
+        name = 'webservers'
+        description = 'my webservers'
+        with self.security_group(name, description) as sg:
+            security_group_id = sg['security_group']['id']
+            with self.security_group_rule(security_group_id):
+                rule = self._build_security_group_rule(
+                    sg['security_group']['id'], 'ingress',
+                    const.PROTO_NAME_ICMP, source_port_range_min='256',
+                    source_port_range_max=None)
                 self._create_security_group_rule(self.fmt, rule)
                 res = self._create_security_group_rule(self.fmt, rule)
                 self.deserialize(self.fmt, res)
@@ -903,6 +1013,21 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
                 self.deserialize(self.fmt, res)
                 self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
 
+    def test_create_security_group_rule_source_icmp_code_too_big(self):
+        name = 'webservers'
+        description = 'my webservers'
+        with self.security_group(name, description) as sg:
+            security_group_id = sg['security_group']['id']
+            with self.security_group_rule(security_group_id):
+                rule = self._build_security_group_rule(
+                    sg['security_group']['id'], 'ingress',
+                    const.PROTO_NAME_ICMP, source_port_range_min='8',
+                    source_port_range_max='256')
+                self._create_security_group_rule(self.fmt, rule)
+                res = self._create_security_group_rule(self.fmt, rule)
+                self.deserialize(self.fmt, res)
+                self.assertEqual(res.status_int, webob.exc.HTTPBadRequest.code)
+
     def test_list_ports_security_group(self):
         with self.network() as n:
             with self.subnet(n):
@@ -917,20 +1042,28 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
     def test_list_security_group_rules(self):
         with self.security_group(name='sg') as sg:
             security_group_id = sg['security_group']['id']
-            with contextlib.nested(self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=22,
-                                                            port_range_max=22),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=23,
-                                                            port_range_max=23),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=24,
-                                                            port_range_max=24)
-                                   ) as (sgr1, sgr2, sgr3):
-
+            with contextlib.nested(
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=22,
+                    port_range_max=22,
+                    source_port_range_min=44,
+                    source_port_range_max=44),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=23,
+                    port_range_max=23,
+                    source_port_range_min=45,
+                    source_port_range_max=45),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=24,
+                    port_range_max=24,
+                    source_port_range_min=46,
+                    source_port_range_max=46)) as (sgr1, sgr2, sgr3):
                 # Delete default rules as they would fail the following
                 # assertion at the end.
                 self._delete_default_security_group_egress_rules(
@@ -944,20 +1077,28 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
     def test_list_security_group_rules_with_sort(self):
         with self.security_group(name='sg') as sg:
             security_group_id = sg['security_group']['id']
-            with contextlib.nested(self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=22,
-                                                            port_range_max=22),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=23,
-                                                            port_range_max=23),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=24,
-                                                            port_range_max=24)
-                                   ) as (sgr1, sgr2, sgr3):
-
+            with contextlib.nested(
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=22,
+                    port_range_max=22,
+                    source_port_range_min=44,
+                    source_port_range_max=44),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=23,
+                    port_range_max=23,
+                    source_port_range_min=45,
+                    source_port_range_max=45),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=24,
+                    port_range_max=24,
+                    source_port_range_min=46,
+                    source_port_range_max=46)) as (sgr1, sgr2, sgr3):
                 # Delete default rules as they would fail the following
                 # assertion at the end.
                 self._delete_default_security_group_egress_rules(
@@ -972,20 +1113,28 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
     def test_list_security_group_rules_with_pagination(self):
         with self.security_group(name='sg') as sg:
             security_group_id = sg['security_group']['id']
-            with contextlib.nested(self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=22,
-                                                            port_range_max=22),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=23,
-                                                            port_range_max=23),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=24,
-                                                            port_range_max=24)
-                                   ) as (sgr1, sgr2, sgr3):
-
+            with contextlib.nested(
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=22,
+                    port_range_max=22,
+                    source_port_range_min=44,
+                    source_port_range_max=44),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=23,
+                    port_range_max=23,
+                    source_port_range_min=45,
+                    source_port_range_max=45),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=24,
+                    port_range_max=24,
+                    source_port_range_min=46,
+                    source_port_range_max=46)) as (sgr1, sgr2, sgr3):
                 # Delete default rules as they would fail the following
                 # assertion at the end.
                 self._delete_default_security_group_egress_rules(
@@ -1000,19 +1149,28 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
     def test_list_security_group_rules_with_pagination_reverse(self):
         with self.security_group(name='sg') as sg:
             security_group_id = sg['security_group']['id']
-            with contextlib.nested(self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=22,
-                                                            port_range_max=22),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=23,
-                                                            port_range_max=23),
-                                   self.security_group_rule(security_group_id,
-                                                            direction='egress',
-                                                            port_range_min=24,
-                                                            port_range_max=24)
-                                   ) as (sgr1, sgr2, sgr3):
+            with contextlib.nested(
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=22,
+                    port_range_max=22,
+                    source_port_range_min=44,
+                    source_port_range_max=44),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=23,
+                    port_range_max=23,
+                    source_port_range_min=45,
+                    source_port_range_max=45),
+                self.security_group_rule(
+                    security_group_id,
+                    direction='egress',
+                    port_range_min=24,
+                    port_range_max=24,
+                    source_port_range_min=46,
+                    source_port_range_max=46)) as (sgr1, sgr2, sgr3):
                 self._test_list_with_pagination_reverse(
                     'security-group-rule', (sgr3, sgr2, sgr1),
                     ('port_range_max', 'desc'), 2, 2,
@@ -1139,12 +1297,14 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         with self.security_group() as sg:
             rule1 = self._build_security_group_rule(sg['security_group']['id'],
                                                     'ingress',
-                                                    const.PROTO_NAME_TCP, '22',
-                                                    '22', '10.0.0.1/24')
+                                                    const.PROTO_NAME_TCP,
+                                                    '22', '22', None, None,
+                                                    '10.0.0.1/24')
             rule2 = self._build_security_group_rule(sg['security_group']['id'],
                                                     'ingress',
-                                                    const.PROTO_NAME_TCP, '23',
-                                                    '23', '10.0.0.1/24')
+                                                    const.PROTO_NAME_TCP,
+                                                    '23', '23', None, None,
+                                                    '10.0.0.1/24')
             rules = {'security_group_rules': [rule1['security_group_rule'],
                                               rule2['security_group_rule']]}
             res = self._create_security_group_rule(self.fmt, rules)
@@ -1165,10 +1325,12 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             with self.security_group() as sg:
                 rule1 = self._build_security_group_rule(
                     sg['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_TCP, '22', '22', '10.0.0.1/24')
+                    const.PROTO_NAME_TCP,
+                    '22', '22', None, None, '10.0.0.1/24')
                 rule2 = self._build_security_group_rule(
                     sg['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_TCP, '23', '23', '10.0.0.1/24')
+                    const.PROTO_NAME_TCP,
+                    '23', '23', None, None, '10.0.0.1/24')
                 rules = {'security_group_rules': [rule1['security_group_rule'],
                                                   rule2['security_group_rule']]
                          }
@@ -1214,8 +1376,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         with self.security_group() as sg:
             rule = self._build_security_group_rule(sg['security_group']['id'],
                                                    'ingress',
-                                                   const.PROTO_NAME_TCP, '22',
-                                                   '22', '10.0.0.1/24')
+                                                   const.PROTO_NAME_TCP,
+                                                   '22', '22', None, None,
+                                                   '10.0.0.1/24')
             rules = {'security_group_rules': [rule['security_group_rule'],
                                               rule['security_group_rule']]}
             res = self._create_security_group_rule(self.fmt, rules)
@@ -1237,7 +1400,8 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             with self.security_group() as sg:
                 rule = self._build_security_group_rule(
                     sg['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_TCP, '22', '22', '10.0.0.1/24')
+                    const.PROTO_NAME_TCP,
+                    '22', '22', None, None, '10.0.0.1/24')
                 rules = {'security_group_rules': [rule['security_group_rule'],
                                                   rule['security_group_rule']]}
                 res = self._create_security_group_rule(self.fmt, rules)
@@ -1251,8 +1415,9 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         with self.security_group() as sg:
             rule = self._build_security_group_rule(sg['security_group']['id'],
                                                    'ingress',
-                                                   const.PROTO_NAME_TCP, '22',
-                                                   '22', '10.0.0.1/24')
+                                                   const.PROTO_NAME_TCP,
+                                                   '22', '22', None, None,
+                                                   '10.0.0.1/24')
             rules = {'security_group_rules': [rule]}
             self._create_security_group_rule(self.fmt, rules)
             res = self._create_security_group_rule(self.fmt, rules)
@@ -1273,7 +1438,8 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             with self.security_group() as sg:
                 rule = self._build_security_group_rule(
                     sg['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_TCP, '22', '22', '10.0.0.1/24')
+                    const.PROTO_NAME_TCP,
+                    '22', '22', None, None, '10.0.0.1/24')
                 rules = {'security_group_rules': [rule]}
                 self._create_security_group_rule(self.fmt, rules)
                 res = self._create_security_group_rule(self.fmt, rule)
@@ -1288,10 +1454,12 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
             with self.security_group() as sg2:
                 rule1 = self._build_security_group_rule(
                     sg1['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_TCP, '22', '22', '10.0.0.1/24')
+                    const.PROTO_NAME_TCP,
+                    '22', '22', None, None, '10.0.0.1/24')
                 rule2 = self._build_security_group_rule(
                     sg2['security_group']['id'], 'ingress',
-                    const.PROTO_NAME_TCP, '23', '23', '10.0.0.1/24')
+                    const.PROTO_NAME_TCP,
+                    '23', '23', None, None, '10.0.0.1/24')
 
                 rules = {'security_group_rules': [rule1['security_group_rule'],
                                                   rule2['security_group_rule']]
@@ -1310,7 +1478,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         remote_group_id = "9cd70774-cc67-4a87-9b39-7d1db38eb087"
         rule = self._build_security_group_rule(security_group_id, direction,
                                                protocol, port_range_min,
-                                               port_range_max,
+                                               port_range_max, None, None,
                                                remote_ip_prefix,
                                                remote_group_id,
                                                ethertype='IPv5')
@@ -1328,7 +1496,7 @@ class TestSecurityGroups(SecurityGroupDBTestCase):
         remote_group_id = "9cd70774-cc67-4a87-9b39-7d1db38eb087"
         rule = self._build_security_group_rule(security_group_id, direction,
                                                protocol, port_range_min,
-                                               port_range_max,
+                                               port_range_max, None, None,
                                                remote_ip_prefix,
                                                remote_group_id)
         res = self._create_security_group_rule(self.fmt, rule)
