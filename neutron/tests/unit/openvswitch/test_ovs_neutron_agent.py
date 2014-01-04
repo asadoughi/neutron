@@ -139,6 +139,7 @@ class TestOvsNeutronAgent(base.BaseTestCase):
                        'db_get_val', return_value=str(old_local_vlan)),
             mock.patch.object(self.agent.int_br, 'delete_flows')
         ) as (set_ovs_db_func, get_ovs_db_func, delete_flows_func):
+            self.agent.assign_local_vlan(net_uuid, 'local', None, None)
             self.agent.port_bound(port, net_uuid, 'local', None, None)
         get_ovs_db_func.assert_called_once_with("Port", mock.ANY, "tag")
         if new_local_vlan != old_local_vlan:
@@ -270,12 +271,8 @@ class TestOvsNeutronAgent(base.BaseTestCase):
         self.assertEqual(expected, actual)
 
     def test_treat_devices_added_returns_true_for_missing_device(self):
-        with contextlib.nested(
-            mock.patch.object(self.agent.plugin_rpc, 'get_device_details',
-                              side_effect=Exception()),
-            mock.patch.object(self.agent.int_br, 'get_vif_port_by_id',
-                              return_value=mock.Mock())):
-            self.assertTrue(self.agent.treat_devices_added_or_updated([{}]))
+        self.assertTrue(self.agent.treat_devices_added_or_updated(
+            [mock.MagicMock()], {}, {}))
 
     def _mock_treat_devices_added_updated(self, details, port, func_name):
         """Mock treat devices added or updated.
@@ -286,15 +283,18 @@ class TestOvsNeutronAgent(base.BaseTestCase):
         :returns: whether the named function was called
         """
         with contextlib.nested(
-            mock.patch.object(self.agent.plugin_rpc, 'get_device_details',
-                              return_value=details),
-            mock.patch.object(self.agent.int_br, 'get_vif_port_by_id',
-                              return_value=port),
             mock.patch.object(self.agent.plugin_rpc, 'update_device_up'),
             mock.patch.object(self.agent.plugin_rpc, 'update_device_down'),
             mock.patch.object(self.agent, func_name)
-        ) as (get_dev_fn, get_vif_func, upd_dev_up, upd_dev_down, func):
-            self.assertFalse(self.agent.treat_devices_added_or_updated([{}]))
+        ) as (upd_dev_up, upd_dev_down, func):
+            device = mock.MagicMock()
+            details['device'] = mock.MagicMock()
+            device_details = {device: details}
+            vif_ports = {device: port}
+            self.assertFalse(self.agent.treat_devices_added_or_updated(
+                [device],
+                device_details,
+                vif_ports))
         return func.called
 
     def test_treat_devices_added_updated_ignores_invalid_ofport(self):
@@ -332,16 +332,15 @@ class TestOvsNeutronAgent(base.BaseTestCase):
                              'segmentation_id': 'bar',
                              'network_type': 'baz'}
         with contextlib.nested(
-            mock.patch.object(self.agent.plugin_rpc, 'get_device_details',
-                              return_value=fake_details_dict),
-            mock.patch.object(self.agent.int_br, 'get_vif_port_by_id',
-                              return_value=mock.MagicMock()),
             mock.patch.object(self.agent.plugin_rpc, 'update_device_up'),
             mock.patch.object(self.agent.plugin_rpc, 'update_device_down'),
             mock.patch.object(self.agent, 'treat_vif_port')
-        ) as (get_dev_fn, get_vif_func, upd_dev_up,
-              upd_dev_down, treat_vif_port):
-            self.assertFalse(self.agent.treat_devices_added_or_updated([{}]))
+        ) as (upd_dev_up, upd_dev_down, treat_vif_port):
+            device = mock.MagicMock()
+            self.assertFalse(self.agent.treat_devices_added_or_updated(
+                [device],
+                {device: fake_details_dict},
+                {device: mock.MagicMock()}))
             self.assertTrue(treat_vif_port.called)
             self.assertTrue(upd_dev_down.called)
 
@@ -364,19 +363,142 @@ class TestOvsNeutronAgent(base.BaseTestCase):
     def test_treat_devices_removed_ignores_missing_port(self):
         self._mock_treat_devices_removed(False)
 
+    def test_retrieve_devices_details_exception(self):
+        with mock.patch.object(self.agent.plugin_rpc, 'get_device_details',
+                               side_effect=Exception()):
+            device = mock.MagicMock()
+            devices_details = self.agent.retrieve_devices_details(
+                [device], {device: mock.MagicMock()})
+            self.assertEqual(devices_details, {})
+
+    def test_retrieve_devices_details_success(self):
+        with mock.patch.object(
+            self.agent.plugin_rpc, 'get_device_details'
+        ) as get_device_details:
+            device = mock.MagicMock()
+            devices_details = self.agent.retrieve_devices_details(
+                [device], {device: mock.MagicMock()})
+            self.assertEqual(devices_details,
+                             {device: get_device_details.return_value})
+
+    def test_retrieve_vif_ports(self):
+        with mock.patch.object(
+            self.agent.int_br, 'get_vif_port_by_id'
+        ) as get_vif_port_by_id:
+            device = mock.MagicMock()
+            vif_ports = self.agent.retrieve_vif_ports([device])
+            get_vif_port_by_id.assert_called_once_with(device)
+            self.assertEqual(vif_ports,
+                             {device: get_vif_port_by_id.return_value})
+
+    def test_assign_local_vlan_not_enough_vlans(self):
+        with contextlib.nested(
+            mock.patch.object(self.agent, 'available_local_vlans'),
+            mock.patch.object(self.agent, 'local_vlan_map')
+        ) as (vlans, local_vlans):
+            vlans.__nonzero__.return_value = False
+            self.agent.assign_local_vlan(*(mock.MagicMock for i in range(4)))
+            self.assertFalse(local_vlans.__getitem__.called)
+
+    def test_assign_local_vlan_success(self):
+        with contextlib.nested(
+            mock.patch.object(self.agent, 'available_local_vlans'),
+            mock.patch.object(self.agent, 'local_vlan_map'),
+            mock.patch.object(ovs_neutron_agent, 'LocalVLANMapping')
+        ) as (vlans, local_vlans, LVM):
+            net_uuid = mock.MagicMock()
+            network_type = mock.MagicMock()
+            physical_network = mock.MagicMock()
+            segmentation_id = mock.MagicMock()
+            self.agent.assign_local_vlan(net_uuid,
+                                         network_type,
+                                         physical_network,
+                                         segmentation_id)
+            LVM.assert_called_once_with(vlans.pop.return_value,
+                                        network_type,
+                                        physical_network,
+                                        segmentation_id)
+            local_vlans.__setitem__.assert_called_once_with(
+                net_uuid, LVM.return_value)
+
+    def _test_ensure_local_vlans_are_assigned(self,
+                                              port_id=True,
+                                              port=True,
+                                              admin_state_up=True,
+                                              contains_network=False):
+        with contextlib.nested(
+            mock.patch.object(self.agent, 'assign_local_vlan'),
+            mock.patch.object(self.agent, 'local_vlan_map')
+        ) as (assign_vlan, vlans):
+            device = mock.MagicMock()
+            device_details = {'device': mock.MagicMock(),
+                              'admin_state_up': admin_state_up,
+                              'network_id': mock.MagicMock(),
+                              'network_type': mock.MagicMock(),
+                              'physical_network': mock.MagicMock(),
+                              'segmentation_id': mock.MagicMock()}
+            if port_id:
+                device_details['port_id'] = mock.MagicMock()
+            vlans.__contains__.return_value = contains_network
+            devices_details = {device: device_details}
+            vif_ports = {device: port}
+            self.agent.ensure_local_vlans_are_assigned(
+                devices_details, vif_ports)
+            return device_details, assign_vlan
+
+    def test_ensure_local_vlans_are_assigned_no_port_id(self):
+        details, assign_vlan = self._test_ensure_local_vlans_are_assigned(
+            port_id=False)
+        self.assertFalse(assign_vlan.called)
+
+    def test_ensure_local_vlans_are_assigned_no_port(self):
+        details, assign_vlan = self._test_ensure_local_vlans_are_assigned(
+            port=False)
+        self.assertFalse(assign_vlan.called)
+
+    def test_ensure_local_vlans_are_assigned_admin_state_down(self):
+        details, assign_vlan = self._test_ensure_local_vlans_are_assigned(
+            admin_state_up=False)
+        self.assertFalse(assign_vlan.called)
+
+    def test_ensure_local_vlans_are_assigned_contains_network(self):
+        details, assign_vlan = self._test_ensure_local_vlans_are_assigned(
+            contains_network=True)
+        self.assertFalse(assign_vlan.called)
+
+    def test_ensure_local_vlans_are_assigned_success(self):
+        details, assign_vlan = self._test_ensure_local_vlans_are_assigned()
+        assign_vlan.assert_called_once_with(details['network_id'],
+                                            details['network_type'],
+                                            details['physical_network'],
+                                            details['segmentation_id'])
+
     def _test_process_network_ports(self, port_info):
         with contextlib.nested(
+            mock.patch.object(self.agent, "retrieve_devices_details"),
+            mock.patch.object(self.agent, "retrieve_vif_ports"),
+            mock.patch.object(self.agent, "ensure_local_vlans_are_assigned"),
             mock.patch.object(self.agent.sg_agent, "setup_port_filters"),
             mock.patch.object(self.agent, "treat_devices_added_or_updated",
                               return_value=False),
             mock.patch.object(self.agent, "treat_devices_removed",
                               return_value=False)
-        ) as (setup_port_filters, device_added_updated, device_removed):
+        ) as (devices_details, vif_ports, vlan_assigned, setup_port_filters,
+              device_added_updated, device_removed):
             self.assertFalse(self.agent.process_network_ports(port_info))
+            devices = port_info['added'] | port_info.get('updated', set())
+            vif_ports.assert_called_once_with(devices)
+            devices_details.assert_called_once_with(devices,
+                                                    vif_ports.return_value)
+            vlan_assigned.assert_called_once_with(
+                devices_details.return_value,
+                vif_ports.return_value)
             setup_port_filters.assert_called_once_with(
                 port_info['added'], port_info.get('updated', set()))
             device_added_updated.assert_called_once_with(
-                port_info['added'] | port_info.get('updated', set()))
+                port_info['added'] | port_info.get('updated', set()),
+                devices_details.return_value,
+                vif_ports.return_value)
             device_removed.assert_called_once_with(port_info['removed'])
 
     def test_process_network_ports(self):
