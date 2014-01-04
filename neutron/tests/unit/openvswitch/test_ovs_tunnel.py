@@ -284,6 +284,7 @@ class TunnelTest(base.BaseTestCase):
                                               self.VETH_MTU)
         a.available_local_vlans = set([LV_ID])
         a.tun_br_ofports = TUN_OFPORTS
+        a.assign_local_vlan(NET_UUID, p_const.TYPE_GRE, None, LS_ID)
         a.provision_local_vlan(NET_UUID, p_const.TYPE_GRE, None, LS_ID)
         self._verify_mock_calls()
 
@@ -307,6 +308,7 @@ class TunnelTest(base.BaseTestCase):
         a.phys_brs['net1'] = self.mock_map_tun_bridge
         a.phys_ofports['net1'] = self.MAP_TUN_OFPORT
         a.int_ofports['net1'] = self.INT_OFPORT
+        a.assign_local_vlan(NET_UUID, p_const.TYPE_FLAT, 'net1', LS_ID)
         a.provision_local_vlan(NET_UUID, p_const.TYPE_FLAT, 'net1', LS_ID)
         self._verify_mock_calls()
 
@@ -316,6 +318,7 @@ class TunnelTest(base.BaseTestCase):
                                               '10.0.0.1', self.NET_MAPPING,
                                               'sudo', 2, ['gre'],
                                               self.VETH_MTU)
+        a.assign_local_vlan(NET_UUID, p_const.TYPE_FLAT, 'net2', LS_ID)
         a.provision_local_vlan(NET_UUID, p_const.TYPE_FLAT, 'net2', LS_ID)
         self._verify_mock_calls()
 
@@ -339,6 +342,7 @@ class TunnelTest(base.BaseTestCase):
         a.phys_brs['net1'] = self.mock_map_tun_bridge
         a.phys_ofports['net1'] = self.MAP_TUN_OFPORT
         a.int_ofports['net1'] = self.INT_OFPORT
+        a.assign_local_vlan(NET_UUID, p_const.TYPE_VLAN, 'net1', LS_ID)
         a.provision_local_vlan(NET_UUID, p_const.TYPE_VLAN, 'net1', LS_ID)
         self._verify_mock_calls()
 
@@ -348,6 +352,7 @@ class TunnelTest(base.BaseTestCase):
                                               '10.0.0.1', self.NET_MAPPING,
                                               'sudo', 2, ['gre'],
                                               self.VETH_MTU)
+        a.assign_local_vlan(NET_UUID, p_const.TYPE_VLAN, 'net2', LS_ID)
         a.provision_local_vlan(NET_UUID, p_const.TYPE_VLAN, 'net2', LS_ID)
         self._verify_mock_calls()
 
@@ -428,6 +433,7 @@ class TunnelTest(base.BaseTestCase):
                                               'sudo', 2, ['gre'],
                                               self.VETH_MTU)
         a.local_vlan_map[NET_UUID] = LVM
+        a.local_vlan_map[NET_UUID].provisioned = True
         a.port_bound(VIF_PORT, NET_UUID, 'gre', None, LS_ID)
         self._verify_mock_calls()
 

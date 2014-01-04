@@ -60,7 +60,7 @@ DEAD_VLAN_TAG = str(q_const.MAX_VLAN_TAG + 1)
 # attributes set).
 class LocalVLANMapping:
     def __init__(self, vlan, network_type, physical_network, segmentation_id,
-                 vif_ports=None):
+                 vif_ports=None, provisioned=False):
         if vif_ports is None:
             vif_ports = {}
         self.vlan = vlan
@@ -70,6 +70,7 @@ class LocalVLANMapping:
         self.vif_ports = vif_ports
         # set of tunnel ports on which packets should be flooded
         self.tun_ofports = set()
+        self.provisioned = provisioned
 
     def __str__(self):
         return ("lv-id = %s type = %s phys-net = %s phys-id = %s" %
@@ -425,9 +426,9 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         '''
         return dispatcher.RpcDispatcher([self])
 
-    def provision_local_vlan(self, net_uuid, network_type, physical_network,
-                             segmentation_id):
-        '''Provisions a local VLAN.
+    def assign_local_vlan(self, net_uuid, network_type, physical_network,
+                          segmentation_id):
+        '''Assigns a local VLAN.
 
         :param net_uuid: the uuid of the network associated with this vlan.
         :param network_type: the network type ('gre', 'vxlan', 'vlan', 'flat',
@@ -447,6 +448,17 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                                                          physical_network,
                                                          segmentation_id)
 
+    def provision_local_vlan(self, net_uuid, network_type, physical_network,
+                             segmentation_id):
+        '''Provisions a local VLAN.
+
+        :param net_uuid: the uuid of the network associated with this vlan.
+        :param network_type: the network type ('gre', 'vxlan', 'vlan', 'flat',
+                                               'local')
+        :param physical_network: the physical network for 'vlan' or 'flat'
+        :param segmentation_id: the VID for 'vlan' or tunnel ID for 'tunnel'
+        '''
+        lvid = self.local_vlan_map[net_uuid].vlan
         if network_type in constants.TUNNEL_NETWORK_TYPES:
             if self.enable_tunneling:
                 # outbound broadcast/multicast
@@ -589,10 +601,11 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         :param physical_network: the physical network for 'vlan' or 'flat'
         :param segmentation_id: the VID for 'vlan' or tunnel ID for 'tunnel'
         '''
-        if net_uuid not in self.local_vlan_map:
-            self.provision_local_vlan(net_uuid, network_type,
-                                      physical_network, segmentation_id)
         lvm = self.local_vlan_map[net_uuid]
+        if not lvm.provisioned:
+            self.provision_local_vlan(net_uuid, network_type, physical_network,
+                                      segmentation_id)
+            lvm.provisioned = True
         lvm.vif_ports[port.vif_id] = port
 
         self.int_br.set_db_attribute("Port", port.port_name, "tag",
@@ -909,23 +922,55 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                     self.tun_br.delete_port(port_name)
                     self.tun_br_ofports[tunnel_type].pop(remote_ip, None)
 
-    def treat_devices_added_or_updated(self, devices):
-        resync = False
+    def _bulk_retrieve_device_details(self, devices):
+        devices_details = dict()
         for device in devices:
-            LOG.debug(_("Processing port:%s"), device)
             try:
                 # TODO(salv-orlando): Provide bulk API for retrieving
                 # details for all devices in one call
-                details = self.plugin_rpc.get_device_details(self.context,
-                                                             device,
-                                                             self.agent_id)
+                devices_details[device] = self.plugin_rpc.get_device_details(
+                    self.context,
+                    device,
+                    self.agent_id)
             except Exception as e:
                 LOG.debug(_("Unable to get port details for "
                             "%(device)s: %(e)s"),
                           {'device': device, 'e': e})
+        return devices_details
+
+    def _bulk_retrieve_vif_ports(self, devices_details):
+        vif_ports = dict()
+        for details in devices_details.values():
+            port = self.int_br.get_vif_port_by_id(details['device'])
+            vif_ports[details['device']] = port
+        return vif_ports
+
+    def _ensure_local_vlan_is_assigned(self, net_uuid, network_type,
+                                       physical_network, segmentation_id):
+        if net_uuid not in self.local_vlan_map:
+            self.assign_local_vlan(net_uuid, network_type,
+                                   physical_network, segmentation_id)
+
+    def _bulk_ensure_vlan_is_assigned(self, devices_details, vif_ports):
+        for details in devices_details.values():
+            port = vif_ports[details['device']]
+            if port and 'port_id' in details and details['admin_state_up']:
+                self._ensure_local_vlan_is_assigned(
+                    details['network_id'],
+                    details['network_type'],
+                    details['physical_network'],
+                    details['segmentation_id'])
+
+    def treat_devices_added_or_updated(self, devices, devices_details,
+                                       vif_ports):
+        resync = False
+        for device in devices:
+            LOG.debug(_("Processing port:%s"), device)
+            details = devices_details.get(device)
+            if not details:
                 resync = True
                 continue
-            port = self.int_br.get_vif_port_by_id(details['device'])
+            port = vif_ports[details['device']]
             if 'port_id' in details:
                 LOG.info(_("Port %(device)s updated. Details: %(details)s"),
                          {'device': device, 'details': details})
@@ -1013,6 +1058,16 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     def process_network_ports(self, port_info):
         resync_a = False
         resync_b = False
+        devices_added_updated = (port_info.get('added', set()) |
+                                 port_info.get('updated', set()))
+        # Assign local VLANs ahead of establishing port filters so that
+        # actions for flows for security group rules can be appropriately
+        # determined
+        if devices_added_updated:
+            devices_details = self._bulk_retrieve_device_details(
+                devices_added_updated)
+            vif_ports = self._bulk_retrieve_vif_ports(devices_details)
+            self._bulk_ensure_vlan_is_assigned(devices_details, vif_ports)
         # TODO(salv-orlando): consider a solution for ensuring notifications
         # are processed exactly in the same order in which they were
         # received. This is tricky because there are two notification
@@ -1030,12 +1085,12 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         # processing for updated ports whose admin state is left unchanged
         # A device might be both in the 'added' and 'updated'
         # list at the same time; avoid processing it twice.
-        devices_added_updated = (port_info.get('added', set()) |
-                                 port_info.get('updated', set()))
         if devices_added_updated:
             start = time.time()
             resync_a = self.treat_devices_added_or_updated(
-                devices_added_updated)
+                devices_added_updated,
+                devices_details,
+                vif_ports)
             LOG.debug(_("process_network_ports - iteration:%(iter_num)d -"
                         "treat_devices_added_or_updated completed "
                         "in %(elapsed).3f"),
