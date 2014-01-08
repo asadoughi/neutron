@@ -104,11 +104,12 @@ class BaseOVS(object):
 
 
 class OVSBridge(BaseOVS):
-    def __init__(self, br_name, root_helper):
+    def __init__(self, br_name, root_helper, cookie=None):
         super(OVSBridge, self).__init__(root_helper)
         self.br_name = br_name
         self.defer_apply_flows = False
         self.deferred_flows = {'add': '', 'mod': '', 'del': ''}
+        self.cookie = cookie
 
     def set_controller(self, controller_names):
         vsctl_command = ['--', 'set-controller', self.br_name]
@@ -181,7 +182,13 @@ class OVSBridge(BaseOVS):
         return self.db_get_val('Bridge',
                                self.br_name, 'datapath_id').strip('"')
 
+    def get_cookie(self, is_delete_expr=False):
+        mask = "/-1" if is_delete_expr else ""
+        return "%s%s" % (self.cookie, mask)
+
     def add_flow(self, **kwargs):
+        if self.cookie:
+            kwargs["cookie"] = self.get_cookie()
         flow_str = _build_flow_expr_str(kwargs, 'add')
         if self.defer_apply_flows:
             self.deferred_flows['add'] += flow_str + '\n'
@@ -189,6 +196,8 @@ class OVSBridge(BaseOVS):
             self.run_ofctl("add-flow", [flow_str])
 
     def mod_flow(self, **kwargs):
+        if self.cookie:
+            kwargs["cookie"] = self.get_cookie()
         flow_str = _build_flow_expr_str(kwargs, 'mod')
         if self.defer_apply_flows:
             self.deferred_flows['mod'] += flow_str + '\n'
@@ -196,6 +205,8 @@ class OVSBridge(BaseOVS):
             self.run_ofctl("mod-flows", [flow_str])
 
     def delete_flows(self, **kwargs):
+        if self.cookie:
+            kwargs["cookie"] = self.get_cookie(True)
         flow_expr_str = _build_flow_expr_str(kwargs, 'del')
         if self.defer_apply_flows:
             self.deferred_flows['del'] += flow_expr_str + '\n'
@@ -527,26 +538,38 @@ def _compare_installed_and_required_version(
         raise SystemError(msg)
 
 
-def check_ovs_vxlan_version(root_helper):
-    min_required_version = constants.MINIMUM_OVS_VXLAN_VERSION
+def _check_ovs_feature_version(root_helper, min_required_version, feature):
     installed_klm_version = get_installed_ovs_klm_version()
     installed_kernel_version = get_installed_kernel_version()
     installed_usr_version = get_installed_ovs_usr_version(root_helper)
-    LOG.debug(_("Checking OVS version for VXLAN support "
+    LOG.debug(_("Checking OVS version for %(feature)s support "
                 "installed klm version is %(klm)s, installed Linux version is "
                 "%(kernel)s, installed user version is %(usr)s ") %
-              {'klm': installed_klm_version,
+              {'feature': feature,
+               'klm': installed_klm_version,
                'kernel': installed_kernel_version,
                'usr': installed_usr_version})
     # First check the userspace version
     _compare_installed_and_required_version(None, installed_usr_version,
                                             min_required_version,
-                                            'userspace', 'VXLAN')
+                                            'userspace', feature)
     # Now check the kernel version
     _compare_installed_and_required_version(installed_kernel_version,
                                             installed_klm_version,
                                             min_required_version,
-                                            'kernel', 'VXLAN')
+                                            'kernel', feature)
+
+
+def check_ovs_vxlan_version(root_helper):
+    _check_ovs_feature_version(root_helper,
+                               constants.MINIMUM_OVS_VXLAN_VERSION,
+                               "VXLAN")
+
+
+def check_ovs_cookies_version(root_helper):
+    _check_ovs_feature_version(root_helper,
+                               constants.MINIMUM_OVS_COOKIES_VERSION,
+                               "cookies")
 
 
 def _build_flow_expr_str(flow_dict, cmd):

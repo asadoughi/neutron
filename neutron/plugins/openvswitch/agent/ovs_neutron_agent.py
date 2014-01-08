@@ -48,6 +48,8 @@ LOG = logging.getLogger(__name__)
 # A placeholder for dead vlans.
 DEAD_VLAN_TAG = str(q_const.MAX_VLAN_TAG + 1)
 
+AGENT_OVS_COOKIE = 0x1
+
 
 # A class to represent a VIF (i.e., a port that has 'iface-id' and 'vif-mac'
 # attributes set).
@@ -152,7 +154,8 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                  veth_mtu=None, l2_population=False,
                  minimize_polling=False,
                  ovsdb_monitor_respawn_interval=(
-                     constants.DEFAULT_OVSDBMON_RESPAWN)):
+                     constants.DEFAULT_OVSDBMON_RESPAWN),
+                 use_cookies=False):
         '''Constructor.
 
         :param integ_br: name of the integration bridge.
@@ -170,6 +173,7 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         :param ovsdb_monitor_respawn_interval: Optional, when using polling
                minimization, the number of seconds to wait before respawning
                the ovsdb monitor.
+        :param use_cookies: Optional, use cookies with flows
         '''
         self.veth_mtu = veth_mtu
         self.root_helper = root_helper
@@ -191,7 +195,12 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         # Keep track of int_br's device count for use by _report_state()
         self.int_br_device_count = 0
 
-        self.int_br = ovs_lib.OVSBridge(integ_br, self.root_helper)
+        self.agent_cookie = AGENT_OVS_COOKIE if use_cookies else None
+        self.int_br = ovs_lib.OVSBridge(
+            integ_br,
+            self.root_helper,
+            self.agent_cookie)
+
         self.setup_rpc()
         self.setup_integration_br()
         self.setup_physical_bridges(bridge_mappings)
@@ -230,7 +239,15 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             try:
                 ovs_lib.check_ovs_vxlan_version(self.root_helper)
             except SystemError:
-                LOG.exception(_("Agent terminated"))
+                LOG.exception(_("Agent terminated: error checking OVS version"
+                                " for VXLAN support."))
+                raise SystemExit(1)
+        if self.agent_cookie:
+            try:
+                ovs_lib.check_ovs_cookies_version(self.root_helper)
+            except SystemError:
+                LOG.exception(_("Agent terminated: error checking OVS version"
+                                " for cookies support."))
                 raise SystemExit(1)
 
     def _report_state(self):
@@ -668,7 +685,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         ovs_bridges.difference_update(br_names)
         ancillary_bridges = []
         for bridge in ovs_bridges:
-            br = ovs_lib.OVSBridge(bridge, self.root_helper)
+            br = ovs_lib.OVSBridge(
+                bridge,
+                self.root_helper,
+                self.agent_cookie)
             LOG.info(_('Adding %s to list of bridges.'), bridge)
             ancillary_bridges.append(br)
         return ancillary_bridges
@@ -681,7 +701,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
 
         :param tun_br: the name of the tunnel bridge.
         '''
-        self.tun_br = ovs_lib.OVSBridge(tun_br, self.root_helper)
+        self.tun_br = ovs_lib.OVSBridge(
+            tun_br,
+            self.root_helper,
+            self.agent_cookie)
         self.tun_br.reset_bridge()
         self.patch_tun_ofport = self.int_br.add_patch_port(
             cfg.CONF.OVS.int_peer_patch_port, cfg.CONF.OVS.tun_peer_patch_port)
@@ -773,7 +796,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                           {'physical_network': physical_network,
                            'bridge': bridge})
                 sys.exit(1)
-            br = ovs_lib.OVSBridge(bridge, self.root_helper)
+            br = ovs_lib.OVSBridge(
+                bridge,
+                self.root_helper,
+                self.agent_cookie)
             br.remove_all_flows()
             br.add_flow(priority=1, actions="normal")
             self.phys_brs[physical_network] = br
@@ -1318,6 +1344,7 @@ def create_agent_config_map(config):
         tunnel_types=config.AGENT.tunnel_types,
         veth_mtu=config.AGENT.veth_mtu,
         l2_population=config.AGENT.l2_population,
+        use_cookies=config.AGENT.use_cookies
     )
 
     # If enable_tunneling is TRUE, set tunnel_type to default to GRE

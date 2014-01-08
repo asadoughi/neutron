@@ -36,6 +36,9 @@ MINIMUM_OVS_VXLAN_VERSION = "1.10"
 # The first version of the Linux kernel with converged VXLAN code for OVS
 MINIMUM_LINUX_KERNEL_OVS_VXLAN = "3.13.0"
 
+# The minimum version of OVS which supports cookies
+MINIMUM_OVS_COOKIES_VERSION = "1.5"
+
 # The different types of tunnels
 TUNNEL_NETWORK_TYPES = [p_const.TYPE_GRE, p_const.TYPE_VXLAN]
 

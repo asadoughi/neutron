@@ -868,3 +868,22 @@ class OVS_Lib_Test(base.BaseTestCase):
         min_kernel_ver = constants.MINIMUM_LINUX_KERNEL_OVS_VXLAN
         self._check_ovs_vxlan_version(min_vxlan_ver, min_vxlan_ver,
                                       min_kernel_ver, expecting_ok=True)
+
+    def test_add_flow_with_cookie(self):
+        cookie = 0x1
+        br = ovs_lib.OVSBridge(self.BR_NAME, self.root_helper, cookie)
+        br.add_flow(actions="drop")
+        self.execute.assert_called_once_with(
+            ["ovs-ofctl", "add-flow", self.BR_NAME,
+             "hard_timeout=0,idle_timeout=0,priority=1,cookie=1,actions=drop"],
+            process_input=None,
+            root_helper=self.root_helper)
+
+    def test_delete_flow_with_cookie(self):
+        cookie = 0x1
+        br = ovs_lib.OVSBridge(self.BR_NAME, self.root_helper, cookie)
+        br.delete_flows()
+        self.execute.assert_called_once_with(
+            ["ovs-ofctl", "del-flows", self.BR_NAME, "cookie=1/-1"],
+            process_input=None,
+            root_helper=self.root_helper)

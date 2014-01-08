@@ -791,3 +791,133 @@ class AncillaryBridgesTest(base.BaseTestCase):
     def test_ancillary_bridges_multiple(self):
         bridges = ['br-int', 'br-ex1', 'br-ex2']
         self._test_ancillary_bridges(bridges, ['br-ex1', 'br-ex2'])
+
+
+class TestOVSNeutronAgentCookie(base.BaseTestCase):
+    def _test_bridge(self, use_cookies, phys_br=False, tun_br=False,
+                     ancillary_br=False):
+        mod_str = 'neutron.plugins.openvswitch.agent.ovs_neutron_agent.'
+        agent_str = mod_str + 'OVSNeutronAgent.'
+        with contextlib.nested(
+            mock.patch('neutron.agent.linux.ovs_lib.get_bridges'),
+            mock.patch('neutron.agent.linux.ovs_lib.OVSBridge'),
+            mock.patch(mod_str + 'ip_lib')
+        ) as (get_br, ovs_br, ip_lib):
+            ip_lib.IPWrapper.return_value.add_veth.return_value = (
+                mock.MagicMock(), mock.MagicMock())
+            get_br.return_value = []
+            with contextlib.nested(
+                mock.patch('neutron.agent.linux.ovs_lib.'
+                           'get_bridge_external_bridge_id',
+                           return_value=ancillary_br),
+                mock.patch(agent_str + 'setup_integration_br'),
+                mock.patch(agent_str + '_check_ovs_version')):
+                # Avoid rpc initialization for unit tests
+                cfg.CONF.set_override('rpc_backend',
+                                      'neutron.openstack.common.rpc.impl_fake')
+                cfg.CONF.set_override('report_interval', 0, 'AGENT')
+                self.kwargs = ovs_neutron_agent.create_agent_config_map(
+                    cfg.CONF)
+                self.kwargs["integ_br"] = mock.MagicMock()
+                get_br.return_value.append(self.kwargs["integ_br"])
+                self.kwargs["root_helper"] = mock.MagicMock()
+                self.kwargs["use_cookies"] = use_cookies
+                if phys_br:
+                    self.kwargs["bridge_mappings"] = dict(foo=phys_br)
+                    get_br.return_value.append(phys_br)
+                if tun_br:
+                    self.kwargs["tun_br"] = tun_br
+                    self.kwargs["tunnel_types"] = mock.MagicMock()
+                    get_br.return_value.append(tun_br)
+                if ancillary_br:
+                    get_br.return_value.append(ancillary_br)
+                self.agent = ovs_neutron_agent.OVSNeutronAgent(**self.kwargs)
+                self.ovs_br = ovs_br
+
+    def test_integ_br_no_cookie(self):
+        self._test_bridge(False)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      None)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_integ_br_with_cookie(self):
+        self._test_bridge(True)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_physical_br_no_cookie(self):
+        phys_br = mock.MagicMock()
+        self._test_bridge(False, phys_br)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      None),
+            mock.call(phys_br,
+                      self.kwargs["root_helper"],
+                      None)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_physical_br_with_cookie(self):
+        phys_br = mock.MagicMock()
+        self._test_bridge(True, phys_br)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE),
+            mock.call(phys_br,
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_tunnel_br_no_cookie(self):
+        tun_br = mock.MagicMock()
+        self._test_bridge(False, False, tun_br)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      None),
+            mock.call(tun_br,
+                      self.kwargs["root_helper"],
+                      None)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_tunnel_br_with_cookie(self):
+        tun_br = mock.MagicMock()
+        self._test_bridge(True, False, tun_br)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE),
+            mock.call(tun_br,
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_ancillary_br_no_cookie(self):
+        ancillary_br = mock.MagicMock()
+        self._test_bridge(False, False, False, ancillary_br)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      None),
+            mock.call(ancillary_br,
+                      self.kwargs["root_helper"],
+                      None)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
+
+    def test_ancillary_br_with_cookie(self):
+        ancillary_br = mock.MagicMock()
+        self._test_bridge(True, False, False, ancillary_br)
+        expected = [
+            mock.call(self.kwargs["integ_br"],
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE),
+            mock.call(ancillary_br,
+                      self.kwargs["root_helper"],
+                      ovs_neutron_agent.AGENT_OVS_COOKIE)]
+        self.assertEqual(self.ovs_br.call_args_list, expected)
