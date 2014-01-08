@@ -90,12 +90,12 @@ class TunnelTest(base.BaseTestCase):
                             }
 
         self.mock_bridge = mock.patch.object(ovs_lib, 'OVSBridge').start()
-        self.mock_bridge.side_effect = (lambda br_name, root_helper:
+        self.mock_bridge.side_effect = (lambda br_name, root_helper, cookie:
                                         self.ovs_bridges[br_name])
         self.mock_bridge_expected = [
-            mock.call(self.INT_BRIDGE, 'sudo'),
-            mock.call(self.MAP_TUN_BRIDGE, 'sudo'),
-            mock.call(self.TUN_BRIDGE, 'sudo'),
+            mock.call(self.INT_BRIDGE, 'sudo', None),
+            mock.call(self.MAP_TUN_BRIDGE, 'sudo', None),
+            mock.call(self.TUN_BRIDGE, 'sudo', None),
         ]
 
         self.mock_int_bridge = self.ovs_bridges[self.INT_BRIDGE]

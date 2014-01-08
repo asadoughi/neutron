@@ -386,9 +386,10 @@ class TestOvsNeutronAgent(base.BaseTestCase):
             self.agent.port_unbound("vif3", "netuid12345")
             self.assertEqual(reclvl_fn.call_count, 2)
 
-    def _check_ovs_vxlan_version(self, installed_usr_version,
-                                 installed_klm_version, min_vers,
-                                 expecting_ok):
+    def _check_ovs_version(self,
+                           installed_usr_version,
+                           installed_klm_version, min_vers,
+                           expecting_ok):
         with mock.patch(
                 'neutron.agent.linux.ovs_lib.get_installed_ovs_klm_version'
         ) as klm_cmd:
@@ -400,7 +401,8 @@ class TestOvsNeutronAgent(base.BaseTestCase):
                     usr_cmd.return_value = installed_usr_version
                     self.agent.tunnel_types = 'vxlan'
                     ovs_neutron_agent.check_ovs_version(min_vers,
-                                                        root_helper='sudo')
+                                                        root_helper='sudo',
+                                                        feature='')
                     version_ok = True
                 except SystemExit as e:
                     self.assertEqual(e.code, 1)
@@ -408,29 +410,29 @@ class TestOvsNeutronAgent(base.BaseTestCase):
             self.assertEqual(version_ok, expecting_ok)
 
     def test_check_minimum_version(self):
-        self._check_ovs_vxlan_version('1.10', '1.10',
-                                      constants.MINIMUM_OVS_VXLAN_VERSION,
-                                      expecting_ok=True)
+        self._check_ovs_version('1.10', '1.10',
+                                constants.MINIMUM_OVS_VXLAN_VERSION,
+                                expecting_ok=True)
 
     def test_check_future_version(self):
-        self._check_ovs_vxlan_version('1.11', '1.11',
-                                      constants.MINIMUM_OVS_VXLAN_VERSION,
-                                      expecting_ok=True)
+        self._check_ovs_version('1.11', '1.11',
+                                constants.MINIMUM_OVS_VXLAN_VERSION,
+                                expecting_ok=True)
 
     def test_check_fail_version(self):
-        self._check_ovs_vxlan_version('1.9', '1.9',
-                                      constants.MINIMUM_OVS_VXLAN_VERSION,
-                                      expecting_ok=False)
+        self._check_ovs_version('1.9', '1.9',
+                                constants.MINIMUM_OVS_VXLAN_VERSION,
+                                expecting_ok=False)
 
     def test_check_fail_no_version(self):
-        self._check_ovs_vxlan_version(None, None,
-                                      constants.MINIMUM_OVS_VXLAN_VERSION,
-                                      expecting_ok=False)
+        self._check_ovs_version(None, None,
+                                constants.MINIMUM_OVS_VXLAN_VERSION,
+                                expecting_ok=False)
 
     def test_check_fail_klm_version(self):
-        self._check_ovs_vxlan_version('1.10', '1.9',
-                                      constants.MINIMUM_OVS_VXLAN_VERSION,
-                                      expecting_ok=False)
+        self._check_ovs_version('1.10', '1.9',
+                                constants.MINIMUM_OVS_VXLAN_VERSION,
+                                expecting_ok=False)
 
     def _prepare_l2_pop_ofports(self):
         lvm1 = mock.Mock()
@@ -685,3 +687,98 @@ class AncillaryBridgesTest(base.BaseTestCase):
     def test_ancillary_bridges_multiple(self):
         bridges = ['br-int', 'br-ex1', 'br-ex2']
         self._test_ancillary_bridges(bridges, ['br-ex1', 'br-ex2'])
+
+
+class TestOVSNeutronAgentCookie(base.BaseTestCase):
+    def _setup(self, use_cookies, phys_br=False, tun_br=False,
+               ancillary_br=False):
+        mod_str = 'neutron.plugins.openvswitch.agent.ovs_neutron_agent.'
+        agent_str = mod_str + 'OVSNeutronAgent.'
+        with contextlib.nested(
+            mock.patch('neutron.agent.linux.ovs_lib.get_bridges'),
+            mock.patch('neutron.agent.linux.ovs_lib.OVSBridge'),
+            mock.patch(mod_str + 'ip_lib')
+        ) as (get_br, ovs_br, ip_lib):
+            ip_lib.IPWrapper.return_value.add_veth.return_value = (
+                mock.MagicMock(), mock.MagicMock())
+            get_br.return_value = []
+            with contextlib.nested(
+                mock.patch('neutron.agent.linux.ovs_lib.'
+                           'get_bridge_external_bridge_id',
+                           return_value=ancillary_br),
+                mock.patch(agent_str + 'setup_integration_br'),
+                mock.patch(agent_str + '_check_ovs_version')):
+                # Avoid rpc initialization for unit tests
+                cfg.CONF.set_override('rpc_backend',
+                                      'neutron.openstack.common.rpc.impl_fake')
+                cfg.CONF.set_override('report_interval', 0, 'AGENT')
+                self.kwargs = ovs_neutron_agent.create_agent_config_map(
+                    cfg.CONF)
+                self.kwargs["integ_br"] = mock.MagicMock()
+                get_br.return_value.append(self.kwargs["integ_br"])
+                self.kwargs["root_helper"] = mock.MagicMock()
+                self.kwargs["use_cookies"] = use_cookies
+                if phys_br:
+                    self.kwargs["bridge_mappings"] = dict(foo=phys_br)
+                    get_br.return_value.append(phys_br)
+                if tun_br:
+                    self.kwargs["tun_br"] = tun_br
+                    self.kwargs["tunnel_types"] = mock.MagicMock()
+                    get_br.return_value.append(tun_br)
+                if ancillary_br:
+                    get_br.return_value.append(ancillary_br)
+                self.agent = ovs_neutron_agent.OVSNeutronAgent(**self.kwargs)
+                self.ovs_br = ovs_br
+
+    def test_integ_br_no_cookie(self):
+        self._setup(False)
+        self.ovs_br.assert_called_once_with(
+            self.kwargs["integ_br"], self.kwargs["root_helper"], None)
+
+    def test_integ_br_with_cookie(self):
+        self._setup(True)
+        self.ovs_br.assert_called_once_with(
+            self.kwargs["integ_br"], self.kwargs["root_helper"],
+            ovs_neutron_agent.AGENT_OVS_COOKIE)
+
+    def test_physical_br_no_cookie(self):
+        phys_br = mock.MagicMock()
+        self._setup(False, phys_br)
+        self.ovs_br.assert_any_call(phys_br,
+                                    self.kwargs["root_helper"],
+                                    None)
+
+    def test_physical_br_with_cookie(self):
+        phys_br = mock.MagicMock()
+        self._setup(True, phys_br)
+        self.ovs_br.assert_any_call(phys_br,
+                                    self.kwargs["root_helper"],
+                                    ovs_neutron_agent.AGENT_OVS_COOKIE)
+
+    def test_tunnel_br_no_cookie(self):
+        tun_br = mock.MagicMock()
+        self._setup(False, False, tun_br)
+        self.ovs_br.assert_any_call(tun_br,
+                                    self.kwargs["root_helper"],
+                                    None)
+
+    def test_tunnel_br_with_cookie(self):
+        tun_br = mock.MagicMock()
+        self._setup(True, False, tun_br)
+        self.ovs_br.assert_any_call(tun_br,
+                                    self.kwargs["root_helper"],
+                                    ovs_neutron_agent.AGENT_OVS_COOKIE)
+
+    def test_ancillary_br_no_cookie(self):
+        ancillary_br = mock.MagicMock()
+        self._setup(False, False, False, ancillary_br)
+        self.ovs_br.assert_any_call(ancillary_br,
+                                    self.kwargs["root_helper"],
+                                    None)
+
+    def test_ancillary_br_with_cookie(self):
+        ancillary_br = mock.MagicMock()
+        self._setup(True, False, False, ancillary_br)
+        self.ovs_br.assert_any_call(ancillary_br,
+                                    self.kwargs["root_helper"],
+                                    ovs_neutron_agent.AGENT_OVS_COOKIE)

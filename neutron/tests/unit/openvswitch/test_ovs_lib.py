@@ -600,3 +600,26 @@ class OVS_Lib_Test(base.BaseTestCase):
                         return_value=mock.Mock(address=None)):
             with testtools.ExpectedException(Exception):
                 self.br.get_local_port_mac()
+
+    def test_add_flow_with_cookie(self):
+        root_helper = mock.MagicMock()
+        br_name = mock.MagicMock()
+        cookie = 0x1
+        br = ovs_lib.OVSBridge(br_name, root_helper, cookie)
+        br.add_flow(actions="drop")
+        self.execute.assert_called_once_with(
+            ["ovs-ofctl", "add-flow", br_name,
+             "hard_timeout=0,idle_timeout=0,priority=0,cookie=1,actions=drop"],
+            process_input=None,
+            root_helper=root_helper)
+
+    def test_delete_flow_with_cookie(self):
+        root_helper = mock.MagicMock()
+        br_name = mock.MagicMock()
+        cookie = 0x1
+        br = ovs_lib.OVSBridge(br_name, root_helper, cookie)
+        br.delete_flows()
+        self.execute.assert_called_once_with(
+            ["ovs-ofctl", "del-flows", br_name, "cookie=1/-1"],
+            process_input=None,
+            root_helper=root_helper)

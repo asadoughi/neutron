@@ -57,6 +57,8 @@ LOG = logging.getLogger(__name__)
 # A placeholder for dead vlans.
 DEAD_VLAN_TAG = str(q_const.MAX_VLAN_TAG + 1)
 
+AGENT_OVS_COOKIE = 0x1
+
 
 # A class to represent a VIF (i.e., a port that has 'iface-id' and 'vif-mac'
 # attributes set).
@@ -161,7 +163,8 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                  veth_mtu=None, l2_population=False,
                  minimize_polling=False,
                  ovsdb_monitor_respawn_interval=(
-                     constants.DEFAULT_OVSDBMON_RESPAWN)):
+                     constants.DEFAULT_OVSDBMON_RESPAWN),
+                 use_cookies=False):
         '''Constructor.
 
         :param integ_br: name of the integration bridge.
@@ -179,6 +182,7 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         :param ovsdb_monitor_respawn_interval: Optional, when using polling
                minimization, the number of seconds to wait before respawning
                the ovsdb monitor.
+        :param use_cookies: Optional, use cookies with flows
         '''
         self.veth_mtu = veth_mtu
         self.root_helper = root_helper
@@ -200,7 +204,12 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         # Keep track of int_br's device count for use by _report_state()
         self.int_br_device_count = 0
 
-        self.int_br = ovs_lib.OVSBridge(integ_br, self.root_helper)
+        self.agent_cookie = AGENT_OVS_COOKIE if use_cookies else None
+        self.int_br = ovs_lib.OVSBridge(
+            integ_br,
+            self.root_helper,
+            self.agent_cookie)
+
         self.setup_rpc()
         self.setup_integration_br()
         self.setup_physical_bridges(bridge_mappings)
@@ -235,7 +244,12 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
     def _check_ovs_version(self):
         if p_const.TYPE_VXLAN in self.tunnel_types:
             check_ovs_version(constants.MINIMUM_OVS_VXLAN_VERSION,
-                              self.root_helper)
+                              self.root_helper,
+                              "VXLAN support")
+        if self.agent_cookie:
+            check_ovs_version(constants.MINIMUM_OVS_COOKIES_VERSION,
+                              self.root_helper,
+                              "cookies")
 
     def _report_state(self):
         # How many devices are likely used by a VM
@@ -687,7 +701,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
         ovs_bridges.difference_update(br_names)
         ancillary_bridges = []
         for bridge in ovs_bridges:
-            br = ovs_lib.OVSBridge(bridge, self.root_helper)
+            br = ovs_lib.OVSBridge(
+                bridge,
+                self.root_helper,
+                self.agent_cookie)
             LOG.info(_('Adding %s to list of bridges.'), bridge)
             ancillary_bridges.append(br)
         return ancillary_bridges
@@ -700,7 +717,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
 
         :param tun_br: the name of the tunnel bridge.
         '''
-        self.tun_br = ovs_lib.OVSBridge(tun_br, self.root_helper)
+        self.tun_br = ovs_lib.OVSBridge(
+            tun_br,
+            self.root_helper,
+            self.agent_cookie)
         self.tun_br.reset_bridge()
         self.patch_tun_ofport = self.int_br.add_patch_port(
             cfg.CONF.OVS.int_peer_patch_port, cfg.CONF.OVS.tun_peer_patch_port)
@@ -792,7 +812,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                           {'physical_network': physical_network,
                            'bridge': bridge})
                 sys.exit(1)
-            br = ovs_lib.OVSBridge(bridge, self.root_helper)
+            br = ovs_lib.OVSBridge(
+                bridge,
+                self.root_helper,
+                self.agent_cookie)
             br.remove_all_flows()
             br.add_flow(priority=1, actions="normal")
             self.phys_brs[physical_network] = br
@@ -1189,41 +1212,40 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
             self.rpc_loop(polling_manager=pm)
 
 
-def check_ovs_version(min_required_version, root_helper):
-    LOG.debug(_("Checking OVS version for VXLAN support"))
+def check_ovs_version(min_required_version, root_helper, feature):
+    LOG.debug(_("Checking OVS version for %s"), feature)
     installed_klm_version = ovs_lib.get_installed_ovs_klm_version()
     installed_usr_version = ovs_lib.get_installed_ovs_usr_version(root_helper)
+    str_dict = {"feature": feature, "version": min_required_version}
     # First check the userspace version
     if installed_usr_version:
         if dist_version.StrictVersion(
                 installed_usr_version) < dist_version.StrictVersion(
                 min_required_version):
-            LOG.error(_('Failed userspace version check for Open '
-                        'vSwitch with VXLAN support. To use '
-                        'VXLAN tunnels with OVS, please ensure '
-                        'the OVS version is %s '
-                        'or newer!'), min_required_version)
-            sys.exit(1)
+            LOG.error(_("Failed userspace version check for Open vSwitch with "
+                        "%(feature)s support. To use %(feature)s with OVS, "
+                        "please ensure the OVS version is %(version)s or "
+                        "newer!"), str_dict)
+            raise SystemExit(1)
         # Now check the kernel version
         if installed_klm_version:
             if dist_version.StrictVersion(
                     installed_klm_version) < dist_version.StrictVersion(
                     min_required_version):
-                LOG.error(_('Failed kernel version check for Open '
-                            'vSwitch with VXLAN support. To use '
-                            'VXLAN tunnels with OVS, please ensure '
-                            'the OVS version is %s or newer!'),
-                          min_required_version)
+                LOG.error(_("Failed kernel version check for Open vSwitch with"
+                            " %(feature)s support. To use %(feature)s with "
+                            "OVS, please ensure the OVS version is %(version)s"
+                            " or newer!"), str_dict)
                 raise SystemExit(1)
         else:
-            LOG.warning(_('Cannot determine kernel Open vSwitch version, '
-                          'please ensure your Open vSwitch kernel module '
-                          'is at least version %s to support VXLAN '
-                          'tunnels.'), min_required_version)
+            LOG.warning(_("Cannot determine kernel Open vSwitch version, "
+                          "please ensure your Open vSwitch kernel module is at"
+                          "least version %(version)s to support %(feature)s."),
+                        str_dict)
     else:
-        LOG.warning(_('Unable to determine Open vSwitch version. Please '
-                      'ensure that its version is %s or newer to use VXLAN '
-                      'tunnels with OVS.'), min_required_version)
+        LOG.warning(_("Unable to determine Open vSwitch version. Please ensure"
+                      " that its version is %(version)s or newer to use "
+                      "%(feature)s with OVS."), str_dict)
         raise SystemExit(1)
 
 
@@ -1249,6 +1271,7 @@ def create_agent_config_map(config):
         tunnel_types=config.AGENT.tunnel_types,
         veth_mtu=config.AGENT.veth_mtu,
         l2_population=config.AGENT.l2_population,
+        use_cookies=config.AGENT.use_cookies
     )
 
     # If enable_tunneling is TRUE, set tunnel_type to default to GRE
