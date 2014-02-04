@@ -33,6 +33,9 @@ VETH_PHYSICAL_PREFIX = 'phy-'
 # The minimum version of OVS which supports VXLAN tunneling
 MINIMUM_OVS_VXLAN_VERSION = "1.10"
 
+# The minimum version of OVS which supports cookies
+MINIMUM_OVS_COOKIES_VERSION = "1.5"
+
 # The different types of tunnels
 TUNNEL_NETWORK_TYPES = [p_const.TYPE_GRE, p_const.TYPE_VXLAN]
 

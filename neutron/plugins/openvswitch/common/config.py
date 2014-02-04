@@ -80,6 +80,9 @@ agent_opts = [
     cfg.BoolOpt('l2_population', default=False,
                 help=_("Use ml2 l2population mechanism driver to learn "
                        "remote mac and IPs and improve tunnel scalability")),
+    cfg.BoolOpt('use_cookies', default=False,
+                help=_("Use OVS cookies to distinctly identify Open vSwitch "
+                       "flows")),
 ]
 
 

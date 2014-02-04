@@ -101,12 +101,13 @@ class BaseOVS(object):
 
 
 class OVSBridge(BaseOVS):
-    def __init__(self, br_name, root_helper):
+    def __init__(self, br_name, root_helper, cookie=None):
         super(OVSBridge, self).__init__(root_helper)
         self.br_name = br_name
         self.re_id = self.re_compile_id()
         self.defer_apply_flows = False
         self.deferred_flows = {'add': '', 'mod': '', 'del': ''}
+        self.cookie = cookie
 
     def re_compile_id(self):
         external = 'external_ids\s*'
@@ -185,6 +186,10 @@ class OVSBridge(BaseOVS):
 
         table = ('table' in kwargs and ",table=%s" %
                  kwargs['table'] or '')
+        mask = "/-1" if is_delete_expr else ""
+        cookie = (self.cookie and
+                  (",cookie=%s%s" % (self.cookie, mask)) or
+                  '')
         in_port = ('in_port' in kwargs and ",in_port=%s" %
                    kwargs['in_port'] or '')
         dl_type = ('dl_type' in kwargs and ",dl_type=%s" %
@@ -198,8 +203,8 @@ class OVSBridge(BaseOVS):
         tun_id = 'tun_id' in kwargs and ",tun_id=%s" % kwargs['tun_id'] or ''
         proto = 'proto' in kwargs and ",%s" % kwargs['proto'] or ''
         ip = ('nw_src' in kwargs or 'nw_dst' in kwargs) and ',ip' or ''
-        match = (table + in_port + dl_type + dl_vlan + dl_src + dl_dst +
-                (proto or ip) + nw_src + nw_dst + tun_id)
+        match = (table + cookie + in_port + dl_type + dl_vlan + dl_src +
+                 dl_dst + (proto or ip) + nw_src + nw_dst + tun_id)
         if match:
             match = match[1:]  # strip leading comma
             flow_expr_arr.append(match)
