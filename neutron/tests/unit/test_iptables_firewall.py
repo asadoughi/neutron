@@ -185,6 +185,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv4_ingress_tcp_source_port(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'ingress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        ingress = call.add_rule('ifake_dev',
+                                '-p tcp -m tcp --sport 10 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv4_ingress_tcp_mport(self):
         rule = {'ethertype': 'IPv4',
                 'direction': 'ingress',
@@ -194,6 +205,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-p tcp -m tcp -m multiport --dports 10:100 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_ingress_tcp_source_mport(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'ingress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-p tcp -m tcp -m multiport --sports 10:100 -j RETURN')
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -208,6 +231,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-s %s -p tcp -m tcp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_ingress_tcp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv4']
+        rule = {'ethertype': 'IPv4',
+                'direction': 'ingress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-s %s -p tcp -m tcp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -242,6 +280,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv4_ingress_udp_source_port(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'ingress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        ingress = call.add_rule('ifake_dev',
+                                '-p udp -m udp --sport 10 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv4_ingress_udp_mport(self):
         rule = {'ethertype': 'IPv4',
                 'direction': 'ingress',
@@ -251,6 +300,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-p udp -m udp -m multiport --dports 10:100 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_ingress_udp_source_mport(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'ingress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-p udp -m udp -m multiport --sports 10:100 -j RETURN')
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -265,6 +326,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-s %s -p udp -m udp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_ingress_udp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv4']
+        rule = {'ethertype': 'IPv4',
+                'direction': 'ingress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-s %s -p udp -m udp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -334,6 +410,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv4_egress_tcp_source_port(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'egress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        egress = call.add_rule('ofake_dev',
+                               '-p tcp -m tcp --sport 10 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv4_egress_tcp_mport(self):
         rule = {'ethertype': 'IPv4',
                 'direction': 'egress',
@@ -343,6 +430,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-p tcp -m tcp -m multiport --dports 10:100 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_egress_tcp_source_mport(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'egress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-p tcp -m tcp -m multiport --sports 10:100 -j RETURN')
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -357,6 +456,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-s %s -p tcp -m tcp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_egress_tcp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv4']
+        rule = {'ethertype': 'IPv4',
+                'direction': 'egress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-s %s -p tcp -m tcp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -391,6 +505,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv4_egress_udp_source_port(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'egress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        egress = call.add_rule('ofake_dev',
+                               '-p udp -m udp --sport 10 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv4_egress_udp_mport(self):
         rule = {'ethertype': 'IPv4',
                 'direction': 'egress',
@@ -400,6 +525,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-p udp -m udp -m multiport --dports 10:100 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_egress_udp_source_mport(self):
+        rule = {'ethertype': 'IPv4',
+                'direction': 'egress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-p udp -m udp -m multiport --sports 10:100 -j RETURN')
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -414,6 +551,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-s %s -p udp -m udp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv4_egress_udp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv4']
+        rule = {'ethertype': 'IPv4',
+                'direction': 'egress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-s %s -p udp -m udp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -464,6 +616,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv6_ingress_tcp_source_port(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'ingress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        ingress = call.add_rule('ifake_dev',
+                                '-p tcp -m tcp --sport 10 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv6_ingress_icmp(self):
         rule = {'ethertype': 'IPv6',
                 'direction': 'ingress',
@@ -495,6 +658,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv6_ingress_tcp_source_mport(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'ingress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-p tcp -m tcp -m multiport --sports 10:100 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv6_ingress_tcp_mport_prefix(self):
         prefix = FAKE_PREFIX['IPv6']
         rule = {'ethertype': 'IPv6',
@@ -506,6 +681,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-s %s -p tcp -m tcp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_ingress_tcp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv6']
+        rule = {'ethertype': 'IPv6',
+                'direction': 'ingress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-s %s -p tcp -m tcp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -540,6 +730,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv6_ingress_udp_source_port(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'ingress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        ingress = call.add_rule('ifake_dev',
+                                '-p udp -m udp --sport 10 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv6_ingress_udp_mport(self):
         rule = {'ethertype': 'IPv6',
                 'direction': 'ingress',
@@ -549,6 +750,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-p udp -m udp -m multiport --dports 10:100 -j RETURN')
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_ingress_udp_source_mport(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'ingress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-p udp -m udp -m multiport --sports 10:100 -j RETURN')
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -563,6 +776,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = call.add_rule(
             'ifake_dev',
             '-s %s -p udp -m udp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        egress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_ingress_udp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv6']
+        rule = {'ethertype': 'IPv6',
+                'direction': 'ingress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        ingress = call.add_rule(
+            'ifake_dev',
+            '-s %s -p udp -m udp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         egress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -632,6 +860,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv6_egress_tcp_source_port(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'egress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        egress = call.add_rule('ofake_dev',
+                               '-p tcp -m tcp --sport 10 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv6_egress_tcp_mport(self):
         rule = {'ethertype': 'IPv6',
                 'direction': 'egress',
@@ -641,6 +880,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-p tcp -m tcp -m multiport --dports 10:100 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_egress_tcp_source_mport(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'egress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-p tcp -m tcp -m multiport --sports 10:100 -j RETURN')
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -655,6 +906,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-s %s -p tcp -m tcp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_egress_tcp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv6']
+        rule = {'ethertype': 'IPv6',
+                'direction': 'egress',
+                'protocol': 'tcp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-s %s -p tcp -m tcp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
@@ -689,6 +955,17 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
+    def test_filter_ipv6_egress_udp_source_port(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'egress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 10}
+        egress = call.add_rule('ofake_dev',
+                               '-p udp -m udp --sport 10 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
     def test_filter_ipv6_egress_udp_mport(self):
         rule = {'ethertype': 'IPv6',
                 'direction': 'egress',
@@ -698,6 +975,18 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-p udp -m udp -m multiport --dports 10:100 -j RETURN')
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_egress_udp_source_mport(self):
+        rule = {'ethertype': 'IPv6',
+                'direction': 'egress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-p udp -m udp -m multiport --sports 10:100 -j RETURN')
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
 
@@ -712,6 +1001,21 @@ class IptablesFirewallTestCase(base.BaseTestCase):
         egress = call.add_rule(
             'ofake_dev',
             '-s %s -p udp -m udp -m multiport --dports 10:100 '
+            '-j RETURN' % prefix)
+        ingress = None
+        self._test_prepare_port_filter(rule, ingress, egress)
+
+    def test_filter_ipv6_egress_udp_source_mport_prefix(self):
+        prefix = FAKE_PREFIX['IPv6']
+        rule = {'ethertype': 'IPv6',
+                'direction': 'egress',
+                'protocol': 'udp',
+                'source_port_range_min': 10,
+                'source_port_range_max': 100,
+                'source_ip_prefix': prefix}
+        egress = call.add_rule(
+            'ofake_dev',
+            '-s %s -p udp -m udp -m multiport --sports 10:100 '
             '-j RETURN' % prefix)
         ingress = None
         self._test_prepare_port_filter(rule, ingress, egress)
